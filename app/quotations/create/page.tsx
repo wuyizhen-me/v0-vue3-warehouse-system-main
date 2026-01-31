@@ -21,6 +21,7 @@ interface Product {
   dimensions?: string
   material?: string
   color?: string
+  weight?: string
   category?: string
   description?: string
   brand?: string
