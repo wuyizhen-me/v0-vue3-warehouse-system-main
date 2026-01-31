@@ -113,12 +113,13 @@ export default function QuotationImportPage() {
 
   const downloadTemplate = async () => {
     try {
-      const response = await fetch('/api/quotations/import')
+      // 使用正确的模板下载API
+      const response = await fetch('/api/quotations/template?format=1')
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'quotation_template.csv'
+      a.download = 'quotation_template.xlsx'
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -201,7 +202,7 @@ export default function QuotationImportPage() {
                   onClick={() => {
                     const input = document.createElement('input')
                     input.type = 'file'
-                    input.accept = '.csv,.xlsx,.xls'
+                    input.accept = '.xlsx,.xls'
                     input.onchange = (e) => {
                     const event = e as unknown as React.ChangeEvent<HTMLInputElement>
                     handleFileSelect(event)

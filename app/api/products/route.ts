@@ -34,17 +34,22 @@ export async function GET(request: Request) {
 
     const products = await query<ProductWithStock[]>(sql, params)
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: products,
     })
+    
+    // 添加缓存头，客户端缓存30秒
+    response.headers.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60')
+    
+    return response
   } catch (error) {
     console.error("[v0] Error fetching products:", error)
     return NextResponse.json({ success: false, error: "获取商品列表失败" }, { status: 500 })
   }
 }
 
-// POST - 创建新商品或获取现有商品
+// POST - 创建新商品或更新现有商品
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -76,7 +81,34 @@ export async function POST(request: Request) {
     const existingProduct = await query<{ id: number }[]>(checkSql, [sku])
 
     if (existingProduct.length > 0) {
-      // 如果SKU已存在，返回现有商品
+      // 如果SKU已存在，更新商品信息
+      const updateSql = `
+        UPDATE products SET 
+          name = ?, 
+          category = ?, 
+          description = ?, 
+          unit = ?, 
+          image_url = ?, 
+          image_alt = ?, 
+          detailed_description = ?, 
+          specifications = ?, 
+          brand = ?, 
+          model = ?, 
+          weight = ?, 
+          dimensions = ?, 
+          color = ?, 
+          material = ?, 
+          updated_at = NOW()
+        WHERE sku = ?
+      `
+      
+      await query(updateSql, [
+        name, category || null, description || null, unit || "件",
+        image_url || null, image_alt || null, detailed_description || null, specifications || null,
+        brand || null, model || null, weight || null, dimensions || null, color || null, material || null,
+        sku
+      ])
+      
       return NextResponse.json({
         success: true,
         data: { id: existingProduct[0].id, existing: true },
@@ -111,7 +143,107 @@ export async function POST(request: Request) {
       data: { id: result.insertId, existing: false },
     })
   } catch (error: any) {
-    console.error("[v0] Error creating product:", error)
-    return NextResponse.json({ success: false, error: "创建商品失败" }, { status: 500 })
+    console.error("[v0] Error creating/updating product:", error)
+    return NextResponse.json({ success: false, error: "创建/更新商品失败" }, { status: 500 })
+  }
+}
+
+// PUT - 更新商品信息
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json()
+    const { 
+      id, 
+      name, 
+      sku, 
+      category, 
+      description, 
+      unit, 
+      image_url, 
+      image_alt, 
+      detailed_description,
+      specifications,
+      brand,
+      model,
+      weight,
+      dimensions,
+      color,
+      material
+    } = body
+
+    // 验证必填字段
+    if (!id || !name || !sku) {
+      return NextResponse.json({ success: false, error: "商品ID、名称和SKU为必填项" }, { status: 400 })
+    }
+
+    // 更新商品信息
+    const updateSql = `
+      UPDATE products SET 
+        name = ?, 
+        sku = ?, 
+        category = ?, 
+        description = ?, 
+        unit = ?, 
+        image_url = ?, 
+        image_alt = ?, 
+        detailed_description = ?, 
+        specifications = ?, 
+        brand = ?, 
+        model = ?, 
+        weight = ?, 
+        dimensions = ?, 
+        color = ?, 
+        material = ?, 
+        updated_at = NOW()
+      WHERE id = ?
+    `
+    
+    await query(updateSql, [
+      name, sku, category || null, description || null, unit || "件",
+      image_url || null, image_alt || null, detailed_description || null, specifications || null,
+      brand || null, model || null, weight || null, dimensions || null, color || null, material || null,
+      id
+    ])
+    
+    return NextResponse.json({
+      success: true,
+      message: "商品更新成功"
+    })
+  } catch (error: any) {
+    console.error("[v0] Error updating product:", error)
+    return NextResponse.json({ success: false, error: "更新商品失败" }, { status: 500 })
+  }
+}
+
+// DELETE - 删除商品
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get("id")
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: "商品ID不能为空" }, { status: 400 })
+    }
+
+    // 开始事务
+    await query("START TRANSACTION")
+
+    try {
+      // 删除库存记录
+      await query("DELETE FROM inventory_stock WHERE product_id = ?", [id])
+      // 删除商品
+      await query("DELETE FROM products WHERE id = ?", [id])
+      // 提交事务
+      await query("COMMIT")
+    } catch (error) {
+      // 回滚事务
+      await query("ROLLBACK")
+      throw error
+    }
+
+    return NextResponse.json({ success: true, message: "商品删除成功" })
+  } catch (error) {
+    console.error("[v0] Error deleting product:", error)
+    return NextResponse.json({ success: false, error: "删除商品失败" }, { status: 500 })
   }
 }

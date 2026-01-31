@@ -115,6 +115,39 @@ export default function SettingsPage() {
     }
   }
 
+  const testAiConnection = async () => {
+    setTesting(true)
+    setMessage(null)
+
+    try {
+      // 测试AI服务是否可用，传递配置信息
+      const response = await fetch('/api/ai/config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          apiKey: aiConfig.apiKey,
+          baseUrl: aiConfig.baseUrl,
+          model: aiConfig.model
+        }),
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        setMessage({ type: 'success', text: 'AI连接测试成功！' })
+      } else {
+        setMessage({ type: 'error', text: `AI连接测试失败：${result.error}` })
+      }
+    } catch (error) {
+      console.error('AI连接测试失败:', error)
+      setMessage({ type: 'error', text: 'AI连接测试失败，请检查配置' })
+    } finally {
+      setTesting(false)
+    }
+  }
+
   // 防止水合错误
   if (!mounted) {
     return null
@@ -181,6 +214,22 @@ export default function SettingsPage() {
                   value={aiConfig.model}
                   onChange={(e) => handleAiConfigChange('model', e.target.value)}
                 />
+              </div>
+
+              <div className="flex gap-2">
+                <Button onClick={testAiConnection} disabled={testing} variant="outline">
+                  {testing ? (
+                    <>
+                      <CheckCircle className="mr-2 h-4 w-4 animate-spin" />
+                      测试中...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      测试连接
+                    </>
+                  )}
+                </Button>
               </div>
             </CardContent>
           </Card>

@@ -15,9 +15,20 @@ export interface AISummaryRequest {
   type: 'product_detail' | 'selected_text' | 'overview'
 }
 
+export interface AIConfig {
+  apiKey: string
+  baseUrl: string
+  model: string
+}
+
 class AIService {
   private static instance: AIService
   private isAvailable = false
+  private config: AIConfig = {
+    apiKey: '',
+    baseUrl: 'https://api.openai.com',
+    model: 'gpt-3.5-turbo'
+  }
 
   static getInstance(): AIService {
     if (!AIService.instance) {
@@ -26,13 +37,29 @@ class AIService {
     return AIService.instance
   }
 
+  constructor() {
+    // 从环境变量中读取AI配置（作为默认值）
+    this.config.apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY || ''
+    this.config.baseUrl = process.env.AI_BASE_URL || 'https://api.openai.com'
+    this.config.model = process.env.AI_MODEL || 'gpt-3.5-turbo'
+  }
+
+  // 更新配置
+  updateConfig(config: Partial<AIConfig>) {
+    this.config = { ...this.config, ...config }
+    this.checkAvailability()
+  }
+
+  // 获取当前配置
+  getConfig(): AIConfig {
+    return { ...this.config }
+  }
+
   // 检查AI服务是否可用
   async checkAvailability(): Promise<boolean> {
     try {
-      // 这里可以检查本地AI模型是否可用
-      // 暂时返回true，表示原生AI可用
-      this.isAvailable = true
-      return true
+      this.isAvailable = !!this.config.apiKey && !!this.config.baseUrl
+      return this.isAvailable
     } catch (error) {
       this.isAvailable = false
       return false
@@ -46,30 +73,32 @@ class AIService {
     }
 
     try {
-      let suggestion = ''
+      let prompt = ''
       
       switch (request.type) {
         case 'product_name':
-          suggestion = this.generateProductNameSuggestion(request.context)
+          prompt = `基于以下上下文生成5个专业的商品名称建议：\n"${request.context}"\n\n要求：\n1. 名称简洁专业\n2. 突出商品特点\n3. 适合商业使用\n4. 用中文输出\n5. 格式为：1. 建议名称1\n2. 建议名称2\n...`
           break
         case 'description':
-          suggestion = this.generateDescriptionSuggestion(request.context, request.data)
+          prompt = `为商品生成详细的中文描述：\n\n商品信息：\n- 上下文：${request.context}\n- 额外数据：${JSON.stringify(request.data || {})}\n\n要求：\n1. 突出商品的优势和特点\n2. 语言流畅自然\n3. 适合电商平台\n4. 长度适中（100-200字）`
           break
         case 'category':
-          suggestion = this.generateCategorySuggestion(request.context)
+          prompt = `为商品推荐合适的中文分类：\n\n商品信息：${request.context}\n\n要求：\n1. 分类准确，符合商业分类标准\n2. 可以是多级分类，用" > "分隔\n3. 输出单个最合适的分类`
           break
         case 'price':
-          suggestion = this.generatePriceSuggestion(request.context, request.data)
+          prompt = `为商品提供价格建议：\n\n商品信息：\n- 上下文：${request.context}\n- 相关数据：${JSON.stringify(request.data || {})}\n\n要求：\n1. 基于商品特点提供合理的价格区间\n2. 考虑市场定位\n3. 用中文输出，格式为："建议价格：¥X - ¥Y"`
           break
         case 'stock_analysis':
-          suggestion = this.generateStockAnalysis(request.data)
+          prompt = `分析商品库存情况并提供建议：\n\n库存数据：${JSON.stringify(request.data)}\n\n要求：\n1. 基于库存数量和安全库存进行分析\n2. 提供明确的建议（如补货、调整采购计划等）\n3. 语言简洁明了\n4. 用中文输出`
           break
         default:
-          suggestion = '暂不支持此类型的建议'
+          return { success: false, error: '暂不支持此类型的建议' }
       }
 
-      return { success: true, data: suggestion }
+      const response = await this.callOpenAI(prompt)
+      return { success: true, data: response }
     } catch (error) {
+      console.error('AI建议生成失败:', error)
       return { success: false, error: 'AI建议生成失败' }
     }
   }
@@ -81,90 +110,133 @@ class AIService {
     }
 
     try {
-      let summary = ''
+      let prompt = ''
       
       switch (request.type) {
         case 'product_detail':
-          summary = this.summarizeProductDetail(request.text)
+          prompt = `请为以下商品详情生成一个简洁的中文摘要：\n\n${request.text}\n\n要求：\n1. 突出商品的核心特点和优势\n2. 长度控制在150字以内\n3. 语言流畅自然\n4. 适合用于产品列表展示`
           break
         case 'selected_text':
-          summary = this.summarizeSelectedText(request.text)
+          prompt = `请为以下文本生成一个精准的中文摘要：\n\n${request.text}\n\n要求：\n1. 保留核心信息\n2. 简明扼要\n3. 不超过100字\n4. 用中文输出`
           break
         case 'overview':
-          summary = this.generateOverviewAnalysis(request.text)
+          prompt = `请基于以下数据生成一个综合性的中文概况分析：\n\n${request.text}\n\n要求：\n1. 全面分析数据趋势和关键点\n2. 提供有价值的见解和建议\n3. 语言专业严谨\n4. 用中文输出`
           break
         default:
-          summary = '暂不支持此类型的摘要'
+          return { success: false, error: '暂不支持此类型的摘要' }
       }
 
-      return { success: true, data: summary }
+      const response = await this.callOpenAI(prompt)
+      return { success: true, data: response }
     } catch (error) {
+      console.error('AI摘要生成失败:', error)
       return { success: false, error: 'AI摘要生成失败' }
     }
   }
 
-  // 商品名称建议
-  private generateProductNameSuggestion(context: string): string {
-    const suggestions = [
-      `${context}标准版`,
-      `${context}专业版`,
-      `${context}高级版`,
-      `${context}经济型`,
-      `${context}豪华型`
-    ]
-    return suggestions[Math.floor(Math.random() * suggestions.length)]
-  }
+  // 调用OpenAI API
+  private async callOpenAI(prompt: string): Promise<string> {
+    try {
+      // 清理 baseUrl，移除末尾的斜杠和路径
+      let baseUrl = this.config.baseUrl.trim()
+      // 移除末尾的斜杠
+      baseUrl = baseUrl.replace(/\/$/, '')
+      // 如果 baseUrl 包含 /v1/chat/completions，移除它
+      baseUrl = baseUrl.replace(/\/v1\/chat\/completions$/, '')
+      
+      const apiUrl = `${baseUrl}/v1/chat/completions`
+      
+      console.log('[AI] Calling OpenAI API:', {
+        baseUrl: this.config.baseUrl,
+        cleanedBaseUrl: baseUrl,
+        apiUrl,
+        model: this.config.model,
+        hasApiKey: !!this.config.apiKey
+      })
 
-  // 商品描述建议
-  private generateDescriptionSuggestion(context: string, data?: any): string {
-    return `${context}是一款优质的商品，具有良好的性能和可靠的质量保证。适用于各种商业环境，是您理想的选择。`
-  }
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.apiKey}`
+        },
+        body: JSON.stringify({
+          model: this.config.model,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的仓库管理系统AI助手，使用中文回答问题。'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 500,
+          temperature: 0.7
+        })
+      })
 
-  // 商品分类建议
-  private generateCategorySuggestion(context: string): string {
-    const categories = ['电子产品', '办公用品', '工业设备', '生活用品', '其他']
-    return categories[Math.floor(Math.random() * categories.length)]
-  }
+      // 首先检查响应状态
+      if (!response.ok) {
+        let errorMessage = 'OpenAI API请求失败'
+        let errorData: any = {}
+        try {
+          const text = await response.text()
+          console.error('[AI] API Error Response Text:', text)
+          try {
+            errorData = JSON.parse(text)
+          } catch {
+            errorData = { raw: text }
+          }
+          console.error('[AI] OpenAI API Error:', errorData)
+          errorMessage = errorData.error?.message || errorData.message || `HTTP ${response.status}: ${response.statusText}`
+        } catch (e) {
+          console.error('[AI] Failed to parse error response:', e)
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`
+        }
+        throw new Error(errorMessage)
+      }
 
-  // 价格建议
-  private generatePriceSuggestion(context: string, data?: any): string {
-    const basePrice = Math.floor(Math.random() * 1000) + 100
-    return `建议价格: ¥${basePrice} - ¥${basePrice + 200}`
-  }
+      // 解析响应数据
+      let data: any
+      try {
+        const text = await response.text()
+        console.log('[AI] API Response Text:', text.substring(0, 500))
+        data = JSON.parse(text)
+      } catch (e) {
+        console.error('[AI] Failed to parse response JSON:', e)
+        throw new Error('无法解析API响应')
+      }
 
-  // 库存分析
-  private generateStockAnalysis(data: any): string {
-    if (!data || !data.stock_quantity || !data.min_stock_alert) {
-      return '数据不足，无法进行分析'
+      console.log('[AI] Parsed API Response:', {
+        hasData: !!data,
+        dataKeys: data ? Object.keys(data) : [],
+        hasChoices: data && Array.isArray(data.choices),
+        choicesLength: data && data.choices ? data.choices.length : 0
+      })
+
+      // 验证响应数据结构
+      if (!data) {
+        throw new Error('API返回空数据')
+      }
+
+      if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+        console.error('[AI] Invalid API response structure:', JSON.stringify(data, null, 2))
+        throw new Error(`API响应格式错误：缺少choices字段。响应内容: ${JSON.stringify(data).substring(0, 200)}`)
+      }
+
+      const firstChoice = data.choices[0]
+      if (!firstChoice.message || typeof firstChoice.message.content !== 'string') {
+        console.error('[AI] Invalid choice structure:', firstChoice)
+        throw new Error('API响应格式错误：缺少message.content字段')
+      }
+
+      return firstChoice.message.content
+    } catch (error) {
+      console.error('[AI] 调用OpenAI API失败:', error)
+      throw error
     }
-
-    const { stock_quantity, min_stock_alert, last_inbound_date } = data
-    
-    if (stock_quantity < min_stock_alert) {
-      return `库存不足！当前库存${stock_quantity}件，低于安全库存${min_stock_alert}件，建议及时补货。`
-    } else if (stock_quantity > min_stock_alert * 5) {
-      return `库存充足但可能过剩。当前库存${stock_quantity}件，远超安全库存，建议适当调整采购计划。`
-    } else {
-      return `库存状态良好。当前库存${stock_quantity}件，在安全范围内。`
-    }
-  }
-
-  // 商品详情摘要
-  private summarizeProductDetail(text: string): string {
-    if (text.length < 50) {
-      return text
-    }
-    return text.substring(0, 100) + '...'
-  }
-
-  // 选择文本摘要
-  private summarizeSelectedText(text: string): string {
-    return `摘要: ${text.substring(0, Math.min(text.length, 200))}${text.length > 200 ? '...' : ''}`
-  }
-
-  // 概况分析
-  private generateOverviewAnalysis(text: string): string {
-    return `基于当前数据分析，系统运行状态良好。建议关注库存管理和销售趋势变化。`
   }
 }
 

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ArrowLeft, Search, Eye, AlertCircle, Upload } from "lucide-react"
+import { ArrowLeft, Search, Eye, AlertCircle, Upload, Trash2 } from "lucide-react"
 
 interface Product {
   id: number
@@ -55,6 +55,29 @@ export default function ProductsPage() {
       console.error("[v0] Error fetching products:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // 删除商品
+  const deleteProduct = async (productId: number, productName: string) => {
+    if (confirm(`确定要删除商品 "${productName}" 吗？此操作不可恢复。`)) {
+      try {
+        const response = await fetch(`/api/products?id=${productId}`, {
+          method: "DELETE"
+        })
+        
+        const result = await response.json()
+        
+        if (result.success) {
+          // 重新加载商品列表
+          fetchProducts()
+        } else {
+          alert(`删除失败: ${result.error || "未知错误"}`)
+        }
+      } catch (error) {
+        console.error("[v0] Error deleting product:", error)
+        alert("删除失败，请稍后重试")
+      }
     }
   }
 
@@ -140,10 +163,22 @@ export default function ProductsPage() {
                         </div>
                       </div>
 
-                      <Button variant="ghost" size="sm" className="mt-4 w-full">
-                        <Eye className="mr-2 h-4 w-4" />
-                        查看详情
-                      </Button>
+                      <div className="flex gap-2 mt-4">
+                        <Button variant="ghost" size="sm" className="flex-1" onClick={(e) => {
+                          e.stopPropagation()
+                          router.push(`/products/${product.id}`)
+                        }}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          查看详情
+                        </Button>
+                        <Button variant="ghost" size="sm" className="bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700" onClick={(e) => {
+                          e.stopPropagation()
+                          deleteProduct(product.id, product.name)
+                        }}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          删除
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}

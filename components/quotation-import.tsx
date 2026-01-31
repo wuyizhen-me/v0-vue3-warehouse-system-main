@@ -116,12 +116,12 @@ export function QuotationImport({ onImportComplete, className = "" }: QuotationI
 
   const downloadTemplate = async () => {
     try {
-      const response = await fetch('/api/quotations/import')
+      const response = await fetch('/api/quotations/template?format=1')
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'quotation_template.csv'
+      a.download = '商品导入模板.xlsx'
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -136,7 +136,7 @@ export function QuotationImport({ onImportComplete, className = "" }: QuotationI
       <CardHeader>
         <CardTitle>报价表导入</CardTitle>
         <CardDescription>
-          上传CSV或Excel格式的报价表文件，快速导入商品信息
+          上传 Excel 格式的报价表文件，快速导入商品信息
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

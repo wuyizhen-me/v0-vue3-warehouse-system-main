@@ -1,138 +1,220 @@
 "use client"
 
-import { useState, useEffect, Suspense } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Plus, Trash2, Eye } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { getUserSession, isAdmin } from "@/lib/auth"
+import { ArrowLeft, Plus, Minus, FileDown, Search } from "lucide-react"
+import Image from "next/image"
 
-interface QuotationItem {
-  product_id: number
-  product_name: string
-  product_sku: string
-  product_unit: string
-  quantity: number
-  unit_price: number
-  total_price: number
+interface Product {
+  id: number
+  name: string
+  sku: string
+  price: number
+  stock_quantity: number
+  image_url?: string
+  dimensions?: string
+  material?: string
+  color?: string
+  category?: string
+  description?: string
+  brand?: string
+  model?: string
+  specifications?: string
+  unit?: string
 }
 
-function QuotationCreateForm() {
+interface QuotationItem {
+  product: Product
+  quantity: number
+}
+
+export default function CreateQuotationPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const productId = searchParams.get("productId")
+  const [user, setUser] = useState<any>(null)
+  const [products, setProducts] = useState<Product[]>([])
+  const [selectedItems, setSelectedItems] = useState<QuotationItem[]>([])
+  const [searchKeyword, setSearchKeyword] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [clientName, setClientName] = useState("")
 
-  const [items, setItems] = useState<QuotationItem[]>([])
-  const [quotationInfo, setQuotationInfo] = useState({
-    customer_name: "",
-    customer_contact: "",
-    valid_until: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-    notes: "",
-  })
-
+  // 初始化用户会话和商品列表
   useEffect(() => {
-    if (productId) {
-      fetchProductAndAdd(productId)
+    const currentUser = getUserSession()
+    if (!currentUser) {
+      router.push("/login")
+      return
     }
-  }, [productId])
+    setUser(currentUser)
+    fetchProducts()
+  }, [router])
+  
+  // 处理URL参数，只在组件首次渲染时运行
+  useEffect(() => {
+    // 检查URL参数中是否包含产品ID
+    const params = new URLSearchParams(window.location.search)
+    const productId = params.get("productId")
+    const productIds = params.get("productIds")
+    
+    if (productId || productIds) {
+      // 延迟处理，确保products已经加载完成
+      const timer = setTimeout(() => {
+        if (productId) {
+          // 单个产品ID
+          const product = products.find(p => p.id === parseInt(productId))
+          if (product) {
+            addToQuotation(product)
+          }
+        } else if (productIds) {
+          // 多个产品ID
+          const ids = productIds.split(",").map(id => parseInt(id))
+          ids.forEach(id => {
+            const product = products.find(p => p.id === id)
+            if (product) {
+              addToQuotation(product)
+            }
+          })
+        }
+      }, 1000)
+      
+      // 清除定时器
+      return () => clearTimeout(timer)
+    }
+  }, [])
 
-  const fetchProductAndAdd = async (id: string) => {
+  const fetchProducts = async (keyword = "") => {
     try {
-      const response = await fetch(`/api/products/${id}`)
+      const url = keyword ? `/api/products?keyword=${encodeURIComponent(keyword)}` : "/api/products"
+      const response = await fetch(url)
       const result = await response.json()
 
       if (result.success) {
-        const product = result.data
-
-        // 获取入库历史以计算平均价格
-        const historyResponse = await fetch(`/api/products/${id}/inbound-history`)
-        const historyResult = await historyResponse.json()
-
-        let averagePrice = 0
-        if (historyResult.success && historyResult.data.length > 0) {
-          averagePrice =
-            historyResult.data.reduce((sum: number, record: any) => sum + record.unit_price, 0) /
-            historyResult.data.length
-        }
-
-        addItem({
-          product_id: product.id,
-          product_name: product.name,
-          product_sku: product.sku,
-          product_unit: product.unit,
-          quantity: 1,
-          unit_price: Math.ceil(averagePrice * 1.2),
-          total_price: Math.ceil(averagePrice * 1.2),
-        })
+        setProducts(result.data)
       }
     } catch (error) {
-      console.error("[v0] Error fetching product:", error)
+      console.error("Error fetching products:", error)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const addItem = (item: QuotationItem) => {
-    setItems([...items, item])
+  const handleSearch = () => {
+    fetchProducts(searchKeyword)
   }
 
-  const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index))
-  }
-
-  const updateItem = (index: number, field: keyof QuotationItem, value: any) => {
-    const newItems = [...items]
-    newItems[index] = {
-      ...newItems[index],
-      [field]: value,
+  const addToQuotation = (product: Product) => {
+    const existing = selectedItems.find((item) => item.product.id === product.id)
+    if (existing) {
+      setSelectedItems(
+        selectedItems.map((item) =>
+          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+        )
+      )
+    } else {
+      setSelectedItems([...selectedItems, { product, quantity: 1 }])
     }
+  }
 
-    if (field === "quantity" || field === "unit_price") {
-      newItems[index].total_price = newItems[index].quantity * newItems[index].unit_price
+  const removeFromQuotation = (productId: number) => {
+    setSelectedItems(selectedItems.filter((item) => item.product.id !== productId))
+  }
+
+  const updateQuantity = (productId: number, quantity: number) => {
+    if (quantity <= 0) {
+      removeFromQuotation(productId)
+      return
     }
-
-    setItems(newItems)
-  }
-
-  const calculateTotalAmount = () => {
-    return items.reduce((sum, item) => sum + item.total_price, 0)
-  }
-
-  const handlePreview = () => {
-    sessionStorage.setItem(
-      "quotation_preview",
-      JSON.stringify({
-        items,
-        info: quotationInfo,
-        total: calculateTotalAmount(),
-        date: new Date().toISOString().slice(0, 10),
-      }),
+    setSelectedItems(
+      selectedItems.map((item) => (item.product.id === productId ? { ...item, quantity } : item))
     )
-    router.push("/quotations/preview")
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("zh-CN", {
-      style: "currency",
-      currency: "CNY",
-    }).format(amount)
+  const calculateTotal = () => {
+    return selectedItems.reduce((sum, item) => sum + (item.product.price || 0) * item.quantity, 0)
   }
+
+  const exportQuotation = async () => {
+    if (selectedItems.length === 0) {
+      alert("请至少选择一个商品")
+      return
+    }
+
+    try {
+      // 计算总价
+      const total = selectedItems.reduce((sum, item) => sum + (item.product.price || 0) * item.quantity, 0)
+      
+      // 准备报价单数据
+      const quotationData = {
+        items: selectedItems.map((item) => ({
+          product_name: item.product.name,
+          product_sku: item.product.sku || "",
+          product_category: item.product.category || "-",
+          product_unit: item.product.unit || "件",
+          unit_price: item.product.price || 0,
+          product_description: item.product.description || "-",
+          brand: item.product.brand || "-",
+          model: item.product.model || "-",
+          material: item.product.material || "-",
+          color: item.product.color || "-",
+          dimensions: item.product.dimensions || "-",
+          weight: item.product.weight || "-",
+          specifications: item.product.specifications || "-",
+        }))
+      }
+
+      // 保存到sessionStorage，以便预览页面使用
+      sessionStorage.setItem("quotation_preview", JSON.stringify(quotationData))
+      
+      // 调用API导出Excel
+      const response = await fetch("/api/quotations/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(quotationData),
+      })
+
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `报价单_${clientName || "客户"}_${new Date().toISOString().split("T")[0]}.xlsx`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      } else {
+        alert("导出失败")
+      }
+    } catch (error) {
+      console.error("Error exporting quotation:", error)
+      alert("导出失败")
+    }
+  }
+
+  if (!user) return null
 
   return (
-    <>
+    <div className="min-h-screen bg-muted/40">
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => router.back()}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div className="flex-1">
-              <h1 className="text-2xl font-bold">创建报价表</h1>
-              <p className="text-sm text-muted-foreground">填写报价信息并生成报价单</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" onClick={() => router.push("/quotations")}>
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div>
+                <h1 className="text-2xl font-bold">创建报价单</h1>
+                <p className="text-sm text-muted-foreground">选择商品并生成报价表</p>
+              </div>
             </div>
-            <Button onClick={handlePreview} disabled={items.length === 0}>
-              <Eye className="mr-2 h-4 w-4" />
-              预览报价表
+            <Button onClick={exportQuotation} disabled={selectedItems.length === 0}>
+              <FileDown className="mr-2 h-4 w-4" />
+              导出报价单
             </Button>
           </div>
         </div>
@@ -140,181 +222,155 @@ function QuotationCreateForm() {
 
       <main className="container mx-auto px-4 py-8">
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* 客户信息 */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle>客户信息</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="customer_name">客户名称</Label>
-                  <Input
-                    id="customer_name"
-                    placeholder="请输入客户名称"
-                    value={quotationInfo.customer_name}
-                    onChange={(e) =>
-                      setQuotationInfo({
-                        ...quotationInfo,
-                        customer_name: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="customer_contact">联系方式</Label>
-                  <Input
-                    id="customer_contact"
-                    placeholder="电话或邮箱"
-                    value={quotationInfo.customer_contact}
-                    onChange={(e) =>
-                      setQuotationInfo({
-                        ...quotationInfo,
-                        customer_contact: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="valid_until">有效期至</Label>
-                  <Input
-                    id="valid_until"
-                    type="date"
-                    value={quotationInfo.valid_until}
-                    onChange={(e) =>
-                      setQuotationInfo({
-                        ...quotationInfo,
-                        valid_until: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="notes">备注说明</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="可填写付款方式、交货时间等信息"
-                    rows={4}
-                    value={quotationInfo.notes}
-                    onChange={(e) =>
-                      setQuotationInfo({
-                        ...quotationInfo,
-                        notes: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="mt-6">
-              <CardHeader>
-                <CardTitle>报价汇总</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">商品种类</span>
-                    <span className="font-medium">{items.length} 种</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">商品总数</span>
-                    <span className="font-medium">{items.reduce((sum, item) => sum + item.quantity, 0)}</span>
-                  </div>
-                  <div className="border-t pt-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">合计金额</span>
-                      <span className="text-2xl font-bold text-primary">{formatCurrency(calculateTotalAmount())}</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
           {/* 商品列表 */}
           <div className="lg:col-span-2">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>商品清单</CardTitle>
-                    <CardDescription>添加需要报价的商品</CardDescription>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => router.push("/products")}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    选择商品
-                  </Button>
-                </div>
+                <CardTitle>商品列表</CardTitle>
+                <CardDescription>点击商品添加到报价单</CardDescription>
               </CardHeader>
               <CardContent>
-                {items.length > 0 ? (
-                  <div className="space-y-4">
-                    {items.map((item, index) => (
-                      <Card key={index} className="border-2">
-                        <CardContent className="p-4">
-                          <div className="mb-3 flex items-start justify-between">
-                            <div>
-                              <h4 className="font-semibold">{item.product_name}</h4>
-                              <p className="text-sm text-muted-foreground">SKU: {item.product_sku}</p>
-                            </div>
-                            <Button variant="ghost" size="icon" onClick={() => removeItem(index)}>
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
+                {/* 搜索 */}
+                <div className="mb-4 flex gap-2">
+                  <Input
+                    placeholder="搜索商品名称或SKU..."
+                    value={searchKeyword}
+                    onChange={(e) => setSearchKeyword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  />
+                  <Button onClick={handleSearch}>
+                    <Search className="mr-2 h-4 w-4" />
+                    搜索
+                  </Button>
+                </div>
+
+                {/* 商品网格 */}
+                {loading ? (
+                  <div className="py-8 text-center">加载中...</div>
+                ) : products.length === 0 ? (
+                  <div className="py-8 text-center text-muted-foreground">暂无商品</div>
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {products.map((product) => (
+                      <div
+                        key={product.id}
+                        className="cursor-pointer rounded-lg border p-4 transition-all hover:shadow-md"
+                        onClick={() => addToQuotation(product)}
+                      >
+                        <div className="flex gap-3">
+                          {product.image_url && (
+                            <Image
+                              src={product.image_url}
+                              alt={product.name}
+                              width={80}
+                              height={80}
+                              className="rounded"
+                            />
+                          )}
+                          <div className="flex-1">
+                            <h3 className="font-semibold">{product.name}</h3>
+                            <p className="text-sm text-muted-foreground">{product.sku || "-"}</p>
+                            <p className="mt-1 text-lg font-bold text-green-600">
+                              ¥{product.price ? product.price.toFixed(2) : "0.00"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">库存: {product.stock_quantity || 0}</p>
                           </div>
-
-                          <div className="grid gap-4 md:grid-cols-3">
-                            <div className="space-y-2">
-                              <Label>数量</Label>
-                              <div className="flex gap-2">
-                                <Input
-                                  type="number"
-                                  min="1"
-                                  value={item.quantity}
-                                  onChange={(e) => updateItem(index, "quantity", Number.parseInt(e.target.value) || 1)}
-                                />
-                                <div className="flex h-10 items-center rounded-md border bg-muted px-3 text-sm">
-                                  {item.product_unit}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label>单价</Label>
-                              <div className="flex gap-2">
-                                <div className="flex h-10 items-center rounded-md border bg-muted px-3 text-sm">¥</div>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  min="0.01"
-                                  value={item.unit_price}
-                                  onChange={(e) =>
-                                    updateItem(index, "unit_price", Number.parseFloat(e.target.value) || 0)
-                                  }
-                                />
-                              </div>
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label>小计</Label>
-                              <div className="flex h-10 items-center rounded-md border bg-primary/10 px-3 font-semibold text-primary">
-                                {formatCurrency(item.total_price)}
-                              </div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
+                        </div>
+                      </div>
                     ))}
                   </div>
-                ) : (
-                  <div className="py-12 text-center text-muted-foreground">
-                    <p>还没有添加商品</p>
-                    <Button variant="outline" className="mt-4 bg-transparent" onClick={() => router.push("/products")}>
-                      去选择商品
-                    </Button>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* 报价单预览 */}
+          <div>
+            <Card className="sticky top-4">
+              <CardHeader>
+                <CardTitle>报价单预览</CardTitle>
+                <CardDescription>已选择 {selectedItems.length} 件商品</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4 space-y-2">
+                  <Label htmlFor="client-name">客户名称</Label>
+                  <Input
+                    id="client-name"
+                    placeholder="请输入客户名称"
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  {selectedItems.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">
+                      点击左侧商品添加到报价单
+                    </p>
+                  ) : (
+                    selectedItems.map((item) => (
+                      <div key={item.product.id} className="rounded-lg border p-3">
+                        <div className="mb-2 flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-medium">{item.product.name}</h4>
+                            <p className="text-sm text-muted-foreground">{item.product.sku}</p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeFromQuotation(item.product.id)}
+                          >
+                            ×
+                          </Button>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                            >
+                              <Minus className="h-4 w-4" />
+                            </Button>
+                            <Input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) =>
+                                updateQuantity(item.product.id, parseInt(e.target.value) || 0)
+                              }
+                              className="h-8 w-16 text-center"
+                            />
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm text-muted-foreground">
+                              ¥{(item.product.price || 0).toFixed(2)} × {item.quantity}
+                            </p>
+                            <p className="font-semibold text-green-600">
+                              ¥{((item.product.price || 0) * item.quantity).toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {selectedItems.length > 0 && (
+                  <div className="mt-4 border-t pt-4">
+                    <div className="flex items-center justify-between text-lg font-bold">
+                      <span>总计:</span>
+                      <span className="text-green-600">¥{calculateTotal().toFixed(2)}</span>
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -322,22 +378,6 @@ function QuotationCreateForm() {
           </div>
         </div>
       </main>
-    </>
-  )
-}
-
-export default function CreateQuotationPage() {
-  return (
-    <div className="min-h-screen bg-muted/40">
-      <Suspense
-        fallback={
-          <div className="flex min-h-screen items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          </div>
-        }
-      >
-        <QuotationCreateForm />
-      </Suspense>
     </div>
   )
 }

@@ -14,6 +14,7 @@ interface ImageUploadProps {
   altValue?: string
   maxSize?: number // MB
   accept?: string
+  type?: "product" | "chat" | "document"
 }
 
 export function ImageUpload({ 
@@ -22,7 +23,8 @@ export function ImageUpload({
   onAltChange, 
   altValue,
   maxSize = 5,
-  accept = "image/jpeg,image/jpg,image/png,image/webp"
+  accept = "image/jpeg,image/jpg,image/png,image/webp",
+  type = "product"
 }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string>("")
@@ -50,6 +52,7 @@ export function ImageUpload({
     try {
       const formData = new FormData()
       formData.append("file", file)
+      formData.append("type", type)
 
       const response = await fetch("/api/upload", {
         method: "POST",

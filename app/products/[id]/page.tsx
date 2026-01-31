@@ -1,15 +1,16 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { ArrowLeft, FileText, AlertTriangle, Edit3, Save, X } from "lucide-react"
-import { AISuggestion } from "@/components/ai-suggestion"
+import { Textarea } from "@/components/ui/textarea"
+import { ArrowLeft, FileText, AlertTriangle, Edit3, Save, X, Loader2, Package, DollarSign } from "lucide-react"
 import { AISelectedTextSummary } from "@/components/ai-selected-text-summary"
+import { ImageUpload } from "@/components/image-upload"
+import { getUserSession, isAdmin, type User } from "@/lib/auth"
 
 interface Product {
   id: number
@@ -31,6 +32,7 @@ interface Product {
   dimensions?: string
   color?: string
   material?: string
+  price?: number
 }
 
 interface InboundRecord {
@@ -50,20 +52,31 @@ export default function ProductDetailPage() {
   const productId = params.id as string
 
   const [product, setProduct] = useState<Product | null>(null)
-  const [inboundHistory, setInboundHistory] = useState<InboundRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
-  const [editForm, setEditForm] = useState<Partial<Product>>({})
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [formData, setFormData] = useState<Partial<Product>>({})
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string>("")
+  const [user, setUser] = useState<User | null>(null)
+  const [quantityInput, setQuantityInput] = useState<string>("")
+  const [quantityError, setQuantityError] = useState<string>("")
 
   useEffect(() => {
+    // 获取当前用户信息
+    const currentUser = getUserSession()
+    setUser(currentUser)
+    
     if (productId) {
       fetchProductDetail()
-      fetchInboundHistory()
     }
   }, [productId])
+
+  useEffect(() => {
+    if (product) {
+      setFormData(product)
+      setQuantityInput(product.stock_quantity.toString())
+    }
+  }, [product])
 
   const fetchProductDetail = async () => {
     try {
@@ -75,141 +88,99 @@ export default function ProductDetailPage() {
       }
     } catch (error) {
       console.error("[v0] Error fetching product detail:", error)
-    }
-  }
-
-  const fetchInboundHistory = async () => {
-    try {
-      const response = await fetch(`/api/products/${productId}/inbound-history`)
-      const result = await response.json()
-
-      if (result.success) {
-        setInboundHistory(result.data)
-      }
-    } catch (error) {
-      console.error("[v0] Error fetching inbound history:", error)
     } finally {
       setLoading(false)
     }
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("zh-CN", {
-      style: "currency",
-      currency: "CNY",
-    }).format(amount)
+  const handleEditToggle = () => {
+    if (isEditing) {
+      // 取消编辑，重置表单数据
+      setFormData(product || {})
+      setQuantityInput(product?.stock_quantity.toString() || "")
+      setQuantityError("")
+    }
+    setIsEditing(!isEditing)
+    setError("")
   }
 
-  // 计算平均价格
-  const averagePrice =
-    inboundHistory.length > 0
-      ? inboundHistory.reduce((sum, record) => sum + record.unit_price, 0) / inboundHistory.length
-      : 0
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
+  }
+
+  const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setQuantityInput(value)
+    
+    // 验证输入
+    const numValue = parseInt(value)
+    if (value === "") {
+      setQuantityError("")
+      setFormData(prev => ({ ...prev, stock_quantity: 0 }))
+    } else if (isNaN(numValue) || numValue < 0) {
+      setQuantityError("请输入有效的数量")
+    } else {
+      setQuantityError("")
+      setFormData(prev => ({ ...prev, stock_quantity: numValue }))
+    }
+  }
+
+  const handleSave = async () => {
+    if (!formData.name || !formData.sku) {
+      setError("商品名称和SKU为必填项")
+      return
+    }
+
+    if (quantityError) {
+      setError("请修正数量输入")
+      return
+    }
+
+    setSaving(true)
+    setError("")
+
+    try {
+      const response = await fetch(`/api/products`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          id: productId,
+          ...formData
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // 保存成功，刷新商品信息
+        await fetchProductDetail()
+        setIsEditing(false)
+      } else {
+        setError(result.error || "保存失败")
+      }
+    } catch (error) {
+      console.error("[v0] Error saving product:", error)
+      setError("保存失败，请重试")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   // 生成报价表
   const handleGenerateQuotation = () => {
     router.push(`/quotations/create?productId=${productId}`)
   }
 
-  // 开始编辑
-  const handleEdit = () => {
-    if (product) {
-      setEditForm(product)
-      setIsEditing(true)
-    }
-  }
-
-  // 取消编辑
-  const handleCancelEdit = () => {
-    setIsEditing(false)
-    setEditForm({})
-  }
-
-  // 保存编辑
-  const handleSaveEdit = async () => {
-    try {
-      let imageUrl = editForm.image_url
-      
-      // 如果有新图片，先上传
-      if (imageFile) {
-        const uploadedUrl = await uploadImage()
-        if (uploadedUrl) {
-          imageUrl = uploadedUrl
-        }
-      }
-
-      const updateData = {
-        ...editForm,
-        image_url: imageUrl
-      }
-
-      const response = await fetch(`/api/products/${productId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updateData),
-      })
-      
-      const result = await response.json()
-      
-      if (result.success) {
-        setProduct(result.data)
-        setIsEditing(false)
-        setEditForm({})
-        setImageFile(null)
-        setImagePreview(null)
-      } else {
-        alert('保存失败：' + result.message)
-      }
-    } catch (error) {
-      console.error('保存失败：', error)
-      alert('保存失败，请重试')
-    }
-  }
-
-  // 处理表单字段变化
-  const handleFieldChange = (field: keyof Product, value: any) => {
-    setEditForm(prev => ({ ...prev, [field]: value }))
-  }
-
-  // 处理图片选择
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setImageFile(file)
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setImagePreview(e.target?.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
-
-  // 上传图片
-  const uploadImage = async () => {
-    if (!imageFile) return null
-
-    const formData = new FormData()
-    formData.append('image', imageFile)
-
-    try {
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      })
-
-      const result = await response.json()
-      if (result.success) {
-        return result.url
-      } else {
-        throw new Error(result.error || '上传失败')
-      }
-    } catch (error) {
-      console.error('图片上传失败:', error)
-      alert('图片上传失败，请重试')
-      return null
-    }
+  // 格式化价格
+  const formatPrice = (price?: number) => {
+    if (price === undefined || price === null) return "-"
+    return new Intl.NumberFormat("zh-CN", {
+      style: "currency",
+      currency: "CNY",
+    }).format(price)
   }
 
   if (loading) {
@@ -233,6 +204,8 @@ export default function ProductDetailPage() {
     )
   }
 
+  const isUserAdmin = isAdmin(user)
+
   return (
     <div className="min-h-screen bg-muted/40">
       <header className="border-b bg-card">
@@ -245,305 +218,293 @@ export default function ProductDetailPage() {
               <h1 className="text-2xl font-bold">{product.name}</h1>
               <p className="text-sm text-muted-foreground">SKU: {product.sku}</p>
             </div>
-            {isEditing ? (
-              <div className="flex gap-2">
-                <Button onClick={handleSaveEdit}>
-                  <Save className="mr-2 h-4 w-4" />
-                  保存
-                </Button>
-                <Button variant="outline" onClick={handleCancelEdit}>
-                  <X className="mr-2 h-4 w-4" />
-                  取消
-                </Button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <Button onClick={handleEdit}>
-                  <Edit3 className="mr-2 h-4 w-4" />
-                  编辑
-                </Button>
-                <Button onClick={handleGenerateQuotation}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  生成报价表
-                </Button>
-              </div>
-            )}
+            <div className="flex gap-2">
+              {isEditing ? (
+                <>
+                  <Button onClick={handleSave} disabled={saving}>
+                    {saving ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    保存
+                  </Button>
+                  <Button variant="outline" onClick={handleEditToggle}>
+                    <X className="mr-2 h-4 w-4" />
+                    取消
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {/* 只有商家可以编辑 */}
+                  {isUserAdmin && (
+                    <Button variant="outline" onClick={handleEditToggle}>
+                      <Edit3 className="mr-2 h-4 w-4" />
+                      编辑
+                    </Button>
+                  )}
+                  <Button onClick={handleGenerateQuotation}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    生成报价表
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <div className="grid gap-6 lg:grid-cols-3">
+        {error && (
+          <div className="mb-6 rounded-md bg-red-50 p-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+        
+        {/* 商品主图和基本信息 */}
+        <div className="grid gap-6 mb-8 md:grid-cols-2">
+          {/* 商品主图 */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            {isEditing && isUserAdmin ? (
+              <ImageUpload
+                value={formData.image_url}
+                onChange={(url) => setFormData(prev => ({ ...prev, image_url: url }))}
+                onAltChange={(alt) => setFormData(prev => ({ ...prev, image_alt: alt }))}
+                altValue={formData.image_alt}
+              />
+            ) : (
+              product.image_url ? (
+                <img
+                  src={product.image_url}
+                  alt={product.image_alt || product.name}
+                  className="w-full h-[400px] object-cover rounded-md"
+                />
+              ) : (
+                <div className="w-full h-[400px] flex items-center justify-center bg-muted rounded-md">
+                  <Package className="h-16 w-16 text-muted-foreground/50" />
+                  <span className="text-muted-foreground ml-2">暂无商品图片</span>
+                </div>
+              )
+            )}
+          </div>
+          
           {/* 商品基本信息 */}
-          <div className="lg:col-span-1">
+          <div className="space-y-4">
+            {/* 价格和库存概览 */}
+            <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
+              <CardContent className="p-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="text-center">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <DollarSign className="h-5 w-5 text-blue-600" />
+                      <span className="text-sm text-muted-foreground">参考价格</span>
+                    </div>
+                    <p className="text-3xl font-bold text-blue-700">
+                      {formatPrice(product.price)}
+                    </p>
+                  </div>
+                  <div className="text-center border-l border-blue-200">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <Package className="h-5 w-5 text-green-600" />
+                      <span className="text-sm text-muted-foreground">当前库存</span>
+                    </div>
+                    <p className="text-3xl font-bold text-green-700">
+                      {product.stock_quantity}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{product.unit}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
-                <CardTitle>商品信息</CardTitle>
+                <CardTitle>基本信息</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* 商品图片 */}
-                {(product.image_url || isEditing) && (
-                  <div>
-                    <Label className="text-sm text-muted-foreground">商品图片</Label>
-                    {isEditing ? (
-                      <div className="mt-2 space-y-2">
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageSelect}
-                          className="hidden"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => fileInputRef.current?.click()}
-                        >
-                          选择图片
-                        </Button>
-                        {imagePreview && (
-                          <img
-                            src={imagePreview}
-                            alt="预览"
-                            className="mt-2 h-32 w-32 rounded-md border object-cover"
-                          />
-                        )}
-                        {!imagePreview && editForm.image_url && (
-                          <img
-                            src={editForm.image_url}
-                            alt={editForm.image_alt || product.name}
-                            className="mt-2 h-32 w-32 rounded-md border object-cover"
-                          />
-                        )}
-                        {isEditing && (
-                          <Input
-                            placeholder="图片描述"
-                            value={editForm.image_alt || ''}
-                            onChange={(e) => handleFieldChange('image_alt', e.target.value)}
-                            className="mt-2"
-                          />
-                        )}
-                      </div>
-                    ) : (
-                      product.image_url && (
-                        <img
-                          src={product.image_url}
-                          alt={product.image_alt || product.name}
-                          className="mt-2 h-32 w-32 rounded-md border object-cover"
-                        />
-                      )
-                    )}
-                  </div>
-                )}
-                <div>
-                  <Label className="text-sm text-muted-foreground">商品名称</Label>
-                  {isEditing ? (
+                {isEditing && isUserAdmin ? (
+                  <div className="space-y-4">
                     <div className="space-y-2">
+                      <Label htmlFor="name">商品名称 *</Label>
                       <Input
-                        value={editForm.name || ''}
-                        onChange={(e) => handleFieldChange('name', e.target.value)}
-                        className="mt-1"
-                      />
-                      <AISuggestion
-                        type="product_name"
-                        context={editForm.name || ''}
-                        onSuggestion={(suggestion) => handleFieldChange('name', suggestion)}
-                        className="w-full"
+                        id="name"
+                        name="name"
+                        value={formData.name || ""}
+                        onChange={handleInputChange}
                       />
                     </div>
-                  ) : (
-                    <p className="font-medium">{product.name}</p>
-                  )}
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">SKU编码</Label>
-                  {isEditing ? (
-                    <Input
-                      value={editForm.sku || ''}
-                      onChange={(e) => handleFieldChange('sku', e.target.value)}
-                      className="mt-1"
-                    />
-                  ) : (
-                    <p className="font-mono text-sm">{product.sku}</p>
-                  )}
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">商品分类</Label>
-                  {isEditing ? (
-                    <Input
-                      value={editForm.category || ''}
-                      onChange={(e) => handleFieldChange('category', e.target.value)}
-                      className="mt-1"
-                    />
-                  ) : (
-                    <p className="font-medium">{product.category || "-"}</p>
-                  )}
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">计量单位</Label>
-                  {isEditing ? (
-                    <Input
-                      value={editForm.unit || ''}
-                      onChange={(e) => handleFieldChange('unit', e.target.value)}
-                      className="mt-1"
-                    />
-                  ) : (
-                    <p className="font-medium">{product.unit}</p>
-                  )}
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">品牌</Label>
-                  {isEditing ? (
-                    <Input
-                      value={editForm.brand || ''}
-                      onChange={(e) => handleFieldChange('brand', e.target.value)}
-                      className="mt-1"
-                    />
-                  ) : (
-                    <p className="font-medium">{product.brand || "-"}</p>
-                  )}
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">型号</Label>
-                  {isEditing ? (
-                    <Input
-                      value={editForm.model || ''}
-                      onChange={(e) => handleFieldChange('model', e.target.value)}
-                      className="mt-1"
-                    />
-                  ) : (
-                    <p className="font-medium">{product.model || "-"}</p>
-                  )}
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">重量(kg)</Label>
-                  {isEditing ? (
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={editForm.weight || ''}
-                      onChange={(e) => handleFieldChange('weight', parseFloat(e.target.value) || 0)}
-                      className="mt-1"
-                    />
-                  ) : (
-                    <p className="font-medium">{product.weight ? `${product.weight}kg` : "-"}</p>
-                  )}
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">尺寸</Label>
-                  {isEditing ? (
-                    <Input
-                      value={editForm.dimensions || ''}
-                      onChange={(e) => handleFieldChange('dimensions', e.target.value)}
-                      className="mt-1"
-                    />
-                  ) : (
-                    <p className="font-medium">{product.dimensions || "-"}</p>
-                  )}
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">颜色</Label>
-                  {isEditing ? (
-                    <Input
-                      value={editForm.color || ''}
-                      onChange={(e) => handleFieldChange('color', e.target.value)}
-                      className="mt-1"
-                    />
-                  ) : (
-                    <p className="font-medium">{product.color || "-"}</p>
-                  )}
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">材质</Label>
-                  {isEditing ? (
-                    <Input
-                      value={editForm.material || ''}
-                      onChange={(e) => handleFieldChange('material', e.target.value)}
-                      className="mt-1"
-                    />
-                  ) : (
-                    <p className="font-medium">{product.material || "-"}</p>
-                  )}
-                </div>
-                {(product.description || isEditing) && (
-                  <div>
-                    <Label className="text-sm text-muted-foreground">商品描述</Label>
-                    {isEditing ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="sku">SKU *</Label>
+                      <Input
+                        id="sku"
+                        name="sku"
+                        value={formData.sku || ""}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Textarea
-                          value={editForm.description || ''}
-                          onChange={(e) => handleFieldChange('description', e.target.value)}
-                          className="mt-1"
-                          rows={3}
-                        />
-                        <AISuggestion
-                          type="description"
-                          context={editForm.name || ''}
-                          data={{ description: editForm.description || '' }}
-                          onSuggestion={(suggestion) => handleFieldChange('description', suggestion)}
-                          className="w-full"
+                        <Label htmlFor="category">分类</Label>
+                        <Input
+                          id="category"
+                          name="category"
+                          value={formData.category || ""}
+                          onChange={handleInputChange}
                         />
                       </div>
-                    ) : (
-                      <p className="text-sm">{product.description}</p>
-                    )}
+                      <div className="space-y-2">
+                        <Label htmlFor="unit">计量单位</Label>
+                        <Input
+                          id="unit"
+                          name="unit"
+                          value={formData.unit || "件"}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="price">参考价格 (¥)</Label>
+                        <Input
+                          id="price"
+                          name="price"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={formData.price || ""}
+                          onChange={handleInputChange}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="stock_quantity">库存数量</Label>
+                        <Input
+                          id="stock_quantity"
+                          value={quantityInput}
+                          onChange={handleQuantityChange}
+                          type="number"
+                          min="0"
+                          className={quantityError ? "border-red-500" : ""}
+                        />
+                        {quantityError && (
+                          <p className="text-xs text-red-500">{quantityError}</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="brand">品牌</Label>
+                        <Input
+                          id="brand"
+                          name="brand"
+                          value={formData.brand || ""}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="model">型号</Label>
+                        <Input
+                          id="model"
+                          name="model"
+                          value={formData.model || ""}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="color">颜色</Label>
+                        <Input
+                          id="color"
+                          name="color"
+                          value={formData.color || ""}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="material">材质</Label>
+                        <Input
+                          id="material"
+                          name="material"
+                          value={formData.material || ""}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="weight">重量 (kg)</Label>
+                        <Input
+                          id="weight"
+                          name="weight"
+                          type="number"
+                          step="0.01"
+                          value={formData.weight || ""}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="dimensions">尺寸</Label>
+                        <Input
+                          id="dimensions"
+                          name="dimensions"
+                          value={formData.dimensions || ""}
+                          onChange={handleInputChange}
+                          placeholder="长x宽x高"
+                        />
+                      </div>
+                    </div>
                   </div>
-                )}
-                {(product.detailed_description || isEditing) && (
-                  <div>
-                    <Label className="text-sm text-muted-foreground">详细描述</Label>
-                    {isEditing ? (
-                      <Textarea
-                        value={editForm.detailed_description || ''}
-                        onChange={(e) => handleFieldChange('detailed_description', e.target.value)}
-                        className="mt-1"
-                        rows={4}
-                      />
-                    ) : (
-                      <p className="text-sm">{product.detailed_description}</p>
-                    )}
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-muted/30 p-3 rounded-lg transition-all hover:bg-muted/50">
+                      <span className="text-xs text-muted-foreground block mb-1">分类</span>
+                      <p className="font-medium text-primary">{product.category || "-"}</p>
+                    </div>
+                    <div className="bg-muted/30 p-3 rounded-lg transition-all hover:bg-muted/50">
+                      <span className="text-xs text-muted-foreground block mb-1">品牌</span>
+                      <p className="font-medium">{product.brand || "-"}</p>
+                    </div>
+                    <div className="bg-muted/30 p-3 rounded-lg transition-all hover:bg-muted/50">
+                      <span className="text-xs text-muted-foreground block mb-1">型号</span>
+                      <p className="font-medium">{product.model || "-"}</p>
+                    </div>
+                    <div className="bg-muted/30 p-3 rounded-lg transition-all hover:bg-muted/50">
+                      <span className="text-xs text-muted-foreground block mb-1">计量单位</span>
+                      <p className="font-medium">{product.unit}</p>
+                    </div>
+                    <div className="bg-muted/30 p-3 rounded-lg transition-all hover:bg-muted/50">
+                      <span className="text-xs text-muted-foreground block mb-1">颜色</span>
+                      <p className="font-medium">{product.color || "-"}</p>
+                    </div>
+                    <div className="bg-muted/30 p-3 rounded-lg transition-all hover:bg-muted/50">
+                      <span className="text-xs text-muted-foreground block mb-1">材质</span>
+                      <p className="font-medium">{product.material || "-"}</p>
+                    </div>
+                    <div className="bg-muted/30 p-3 rounded-lg transition-all hover:bg-muted/50">
+                      <span className="text-xs text-muted-foreground block mb-1">重量</span>
+                      <p className="font-medium">{product.weight ? `${product.weight}kg` : "-"}</p>
+                    </div>
+                    <div className="bg-muted/30 p-3 rounded-lg transition-all hover:bg-muted/50">
+                      <span className="text-xs text-muted-foreground block mb-1">尺寸</span>
+                      <p className="font-medium">{product.dimensions || "-"}</p>
+                    </div>
                   </div>
                 )}
               </CardContent>
             </Card>
-
-            {/* AI库存分析 */}
-            <Card className="mt-6">
-              <CardHeader>
-                <CardTitle>AI库存分析</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <AISuggestion
-                  type="stock_analysis"
-                  context="库存分析"
-                  data={{
-                    stock_quantity: product.stock_quantity,
-                    min_stock_alert: product.min_stock_alert,
-                    last_inbound_date: product.last_inbound_date
-                  }}
-                  className="w-full"
-                />
-              </CardContent>
-            </Card>
-
+            
             {/* 库存信息 */}
-            <Card className="mt-6">
+            <Card>
               <CardHeader>
                 <CardTitle>库存信息</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <span className="text-sm text-muted-foreground">当前库存</span>
-                  <p className="text-2xl font-bold">
-                    {product.stock_quantity} {product.unit}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-sm text-muted-foreground">预警数量</span>
-                  <p className="font-medium">
-                    {product.min_stock_alert} {product.unit}
-                  </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm text-muted-foreground">当前库存</span>
+                    <p className="text-2xl font-bold">
+                      {product.stock_quantity} <span className="text-base font-normal">{product.unit}</span>
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm text-muted-foreground">安全库存</span>
+                    <p className="text-lg font-medium">
+                      {product.min_stock_alert} <span className="text-sm font-normal">{product.unit}</span>
+                    </p>
+                  </div>
                 </div>
                 {product.stock_quantity <= product.min_stock_alert && (
                   <div className="flex items-center gap-2 rounded-md bg-red-50 p-3 text-sm text-red-700">
@@ -552,97 +513,62 @@ export default function ProductDetailPage() {
                   </div>
                 )}
                 {product.last_inbound_date && (
-                  <div>
-                    <span className="text-sm text-muted-foreground">最后入库日期</span>
-                    <p className="font-medium">{product.last_inbound_date}</p>
+                  <div className="text-sm text-muted-foreground">
+                    最后入库时间: {new Date(product.last_inbound_date).toLocaleDateString("zh-CN")}
                   </div>
                 )}
               </CardContent>
             </Card>
-
-            {/* 价格统计 */}
-            <Card className="mt-6">
-              <CardHeader>
-                <CardTitle>价格统计</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <span className="text-sm text-muted-foreground">平均入库价</span>
-                  <p className="text-xl font-bold text-primary">{formatCurrency(averagePrice)}</p>
-                </div>
-                {inboundHistory.length > 0 && (
-                  <>
-                    <div>
-                      <span className="text-sm text-muted-foreground">最高价格</span>
-                      <p className="font-medium">
-                        {formatCurrency(Math.max(...inboundHistory.map((r) => r.unit_price)))}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-sm text-muted-foreground">最低价格</span>
-                      <p className="font-medium">
-                        {formatCurrency(Math.min(...inboundHistory.map((r) => r.unit_price)))}
-                      </p>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
           </div>
-
-          {/* 入库历史 */}
-          <div className="lg:col-span-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>入库历史</CardTitle>
-                <CardDescription>共 {inboundHistory.length} 条入库记录</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {inboundHistory.length > 0 ? (
-                  <div className="space-y-4">
-                    {inboundHistory.map((record) => (
-                      <Card key={record.id} className="border-l-4 border-l-primary">
-                        <CardContent className="p-4">
-                          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                            <div>
-                              <span className="text-sm text-muted-foreground">入库日期</span>
-                              <p className="font-medium">{record.inbound_date}</p>
-                            </div>
-                            <div>
-                              <span className="text-sm text-muted-foreground">入库数量</span>
-                              <p className="font-medium">
-                                {record.quantity} {product.unit}
-                              </p>
-                            </div>
-                            <div>
-                              <span className="text-sm text-muted-foreground">单价</span>
-                              <p className="font-medium">{formatCurrency(record.unit_price)}</p>
-                            </div>
-                            <div>
-                              <span className="text-sm text-muted-foreground">总金额</span>
-                              <p className="font-semibold text-primary">{formatCurrency(record.total_price)}</p>
-                            </div>
-                            <div>
-                              <span className="text-sm text-muted-foreground">批次号</span>
-                              <p className="font-mono text-xs">{record.batch_number}</p>
-                            </div>
-                            {record.supplier && (
-                              <div>
-                                <span className="text-sm text-muted-foreground">供应商</span>
-                                <p className="font-medium">{record.supplier}</p>
-                              </div>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+        </div>
+        
+        {/* 商品详细介绍 */}
+        <div className="space-y-6">
+          {/* 商品描述 */}
+          <Card>
+            <CardHeader>
+              <CardTitle>商品描述</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isEditing && isUserAdmin ? (
+                <Textarea
+                  name="description"
+                  value={formData.description || ""}
+                  onChange={handleInputChange}
+                  rows={4}
+                  placeholder="请输入商品描述..."
+                />
+              ) : (
+                <p className="text-base leading-relaxed">{product.description || "暂无商品描述"}</p>
+              )}
+            </CardContent>
+          </Card>
+          
+          {/* 详细描述 */}
+          <Card>
+            <CardHeader>
+              <CardTitle>详细介绍</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isEditing && isUserAdmin ? (
+                <Textarea
+                  name="detailed_description"
+                  value={formData.detailed_description || ""}
+                  onChange={handleInputChange}
+                  rows={6}
+                  placeholder="请输入详细介绍..."
+                />
+              ) : (
+                product.detailed_description ? (
+                  <div className="prose max-w-none">
+                    <p className="text-base leading-relaxed whitespace-pre-line">{product.detailed_description}</p>
                   </div>
                 ) : (
-                  <div className="py-8 text-center text-muted-foreground">暂无入库记录</div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                  <p className="text-muted-foreground">暂无详细介绍</p>
+                )
+              )}
+            </CardContent>
+          </Card>
         </div>
       </main>
 
