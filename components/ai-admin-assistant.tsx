@@ -83,6 +83,38 @@ export function AIAdminAssistant({ username }: AIAssistantProps) {
             // 跳转到商品编辑页面
             window.location.href = `/products/${productId}`
           }
+        } else if (result.data.startsWith('【回复客户:')) {
+          // 解析回复客户指令
+          const match = result.data.match(/【回复客户:([^|]+)\|类型:([^|]+)\|内容:([^\]]+)】/)
+          if (match) {
+            const [, customerUsername, replyType, replyContent] = match
+            
+            // 调用回复客户API
+            const replyResponse = await fetch('/api/chat/reply', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                customerUsername,
+                replyType,
+                replyContent,
+                adminUsername: username
+              })
+            })
+            
+            const replyResult = await replyResponse.json()
+            
+            if (replyResult.success) {
+              // 添加成功提示消息
+              const successMessage: ChatMessage = {
+                id: (Date.now() + 2).toString(),
+                content: `✅ 已成功回复客户 ${customerUsername}`,
+                sender: 'ai',
+                timestamp: new Date()
+              }
+              setChatMessages(prev => [...prev, successMessage])
+              return
+            }
+          }
         }
       }
       

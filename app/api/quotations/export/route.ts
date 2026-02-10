@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     items.forEach((item: any) => {
       const row = worksheet.addRow([
         item.product_name,
-        item.product_sku,
+        item.product_code,
         item.product_category || "-",
         item.product_unit || "件",
         item.unit_price,

@@ -461,7 +461,7 @@ INSERT IGNORE INTO users (username, password_hash, role, email)
 VALUES ('customer', 'customer123', 'customer', 'customer@example.com');
 
 -- 插入示例商品
-INSERT IGNORE INTO products (name, sku, category, brand, unit, min_stock_alert, status) VALUES
+INSERT IGNORE INTO products (name, code, category, brand, unit, min_stock_alert, status) VALUES
 ('无线蓝牙耳机', 'EARB001', '电子产品', 'SoundMax', 'piece', 20, 'active'),
 ('智能手机壳', 'CASE001', '配件', 'ProtectPro', 'piece', 50, 'active'),
 ('USB-C数据线', 'CABLE001', '配件', 'ConnectFast', 'piece', 30, 'active'),

@@ -3,7 +3,7 @@ import { query } from "@/lib/db"
 
 interface ImportProduct {
   name: string
-  sku: string
+  code: string
   unit?: string
   category?: string
   description?: string
@@ -36,48 +36,48 @@ export async function POST(request: Request) {
     for (const product of products) {
       try {
         // 验证必填字段
-        if (!product.name || !product.sku) {
+        if (!product.name || !product.code) {
           results.push({
-            sku: product.sku,
+            code: product.code,
             name: product.name,
             success: false,
-            error: "商品名称和SKU编码是必填项"
+            error: "商品名称和编码是必填项"
           })
           errorCount++
           continue
         }
 
-        // 检查SKU是否已存在
-        const checkSql = "SELECT id FROM products WHERE sku = ?"
-        const existingProducts = await query<{ id: number }[]>(checkSql, [product.sku])
+        // 检查编码是否已存在
+        const checkSql = "SELECT id FROM products WHERE code = ?"
+        const existingProducts = await query<{ id: number }[]>(checkSql, [product.code])
 
         if (existingProducts.length > 0) {
           results.push({
-            sku: product.sku,
+            code: product.code,
             name: product.name,
             success: false,
-            error: "SKU编码已存在"
+            error: "编码已存在"
           })
           errorCount++
           continue
         }
 
-        // 生成自动SKU（如果没有提供）
-        let finalSku = product.sku
-        if (!finalSku) {
-          finalSku = `AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`
+        // 生成自动编码（如果没有提供）
+        let finalCode = product.code
+        if (!finalCode) {
+          finalCode = `AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`
         }
 
         // 插入商品
         const insertSql = `
           INSERT INTO products (
-            name, sku, category, description, unit, brand, model, weight, dimensions, color, material, created_at, updated_at
+            name, code, category, description, unit, brand, model, weight, dimensions, color, material, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         `
         
         await query(insertSql, [
           product.name,
-          finalSku,
+          finalCode,
           product.category || null,
           product.description || null,
           product.unit || '件',
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
         ])
 
         results.push({
-          sku: finalSku,
+          code: finalCode,
           name: product.name,
           success: true,
           error: null
@@ -98,9 +98,9 @@ export async function POST(request: Request) {
         successCount++
 
       } catch (error) {
-        console.error(`[v0] 商品导入失败: ${product.sku}`, error)
+        console.error(`[v0] 商品导入失败: ${product.code}`, error)
         results.push({
-          sku: product.sku,
+          code: product.code,
           name: product.name,
           success: false,
           error: "数据库操作失败"

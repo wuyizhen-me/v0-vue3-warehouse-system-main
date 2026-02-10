@@ -8,7 +8,7 @@ import { ArrowLeft, Download, Printer } from "lucide-react"
 
 interface QuotationItem {
   product_name: string
-  product_sku: string
+  product_code: string
   product_unit: string
   quantity: number
   unit_price: number
@@ -181,7 +181,7 @@ export default function QuotationPreviewPage() {
                     <tr key={index} className="border-t">
                       <td className="border-r p-3 text-sm">{index + 1}</td>
                       <td className="border-r p-3 text-sm">{item.product_name}</td>
-                      <td className="border-r p-3 font-mono text-xs">{item.product_sku}</td>
+                      <td className="border-r p-3 font-mono text-xs">{item.product_code}</td>
                       <td className="border-r p-3 text-center text-sm">
                         {item.quantity} {item.product_unit}
                       </td>

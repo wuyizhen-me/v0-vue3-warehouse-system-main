@@ -10,7 +10,7 @@ import { ArrowLeft, Search, Eye, AlertCircle, Upload, Trash2 } from "lucide-reac
 interface Product {
   id: number
   name: string
-  sku: string
+  code: string
   category: string
   unit: string
   stock_quantity: number
@@ -35,7 +35,7 @@ export default function ProductsPage() {
       const filtered = products.filter(
         (product) =>
           product.name.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-          product.sku.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+          product.code.toLowerCase().includes(searchKeyword.toLowerCase()) ||
           product.category?.toLowerCase().includes(searchKeyword.toLowerCase()),
       )
       setFilteredProducts(filtered)
@@ -141,7 +141,7 @@ export default function ProductsPage() {
                       <div className="mb-3 flex items-start justify-between">
                         <div>
                           <h3 className="mb-1 font-semibold">{product.name}</h3>
-                          <p className="text-xs text-muted-foreground">SKU: {product.sku}</p>
+                          <p className="text-xs text-muted-foreground">编码: {product.code}</p>
                         </div>
                         {product.stock_quantity <= product.min_stock_alert && (
                           <AlertCircle className="h-5 w-5 text-red-500" />

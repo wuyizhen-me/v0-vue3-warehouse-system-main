@@ -18,7 +18,7 @@ export default function InboundPage() {
 
   const [formData, setFormData] = useState({
     product_name: "",
-    product_sku: "",
+    product_code: "",
     product_unit: "件",
     product_category: "",
     product_image_url: "",
@@ -73,7 +73,7 @@ export default function InboundPage() {
         },
         body: JSON.stringify({
           name: formData.product_name,
-          sku: formData.product_sku || formData.product_name,
+          code: formData.product_code || formData.product_name,
           category: formData.product_category || "未分类",
           unit: formData.product_unit,
           description: formData.product_description,
@@ -116,7 +116,7 @@ export default function InboundPage() {
         // 重置表单
         setFormData({
           product_name: "",
-          product_sku: "",
+          product_code: "",
           product_unit: "件",
           product_category: "",
           product_image_url: "",
@@ -228,12 +228,12 @@ export default function InboundPage() {
 
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="space-y-2">
-                    <Label htmlFor="product_sku">商品SKU</Label>
+                    <Label htmlFor="product_code">商品编码</Label>
                     <Input
-                      id="product_sku"
+                      id="product_code"
                       placeholder="可选，留空将使用商品名称"
-                      value={formData.product_sku}
-                      onChange={(e) => setFormData({ ...formData, product_sku: e.target.value })}
+                      value={formData.product_code}
+                      onChange={(e) => setFormData({ ...formData, product_code: e.target.value })}
                     />
                   </div>
 

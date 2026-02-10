@@ -10,7 +10,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         p.*,
         COALESCE(s.quantity, 0) as stock_quantity,
         COALESCE(s.min_stock_alert, 10) as min_stock_alert,
-        s.last_inbound_date
+        s.last_inbound_date,
+        (
+          SELECT unit_price 
+          FROM inventory_inbound 
+          WHERE product_id = p.id 
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as price
       FROM products p
       LEFT JOIN inventory_stock s ON p.id = s.product_id
       WHERE p.id = ?
@@ -37,24 +44,24 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const { id } = await params
   try {
     const body = await request.json()
-    const { name, sku, category, description, unit, brand, model, weight, dimensions, color, material, detailed_description, specifications } = body
+    const { name, code, category, description, unit, brand, model, weight, dimensions, color, material, specifications } = body
 
     // 验证必填字段
-    if (!name || !sku || !unit) {
+    if (!name || !code || !unit) {
       return NextResponse.json({ 
         success: false, 
-        error: "商品名称、SKU编码和计量单位是必填项" 
+        error: "商品名称、编码和计量单位是必填项" 
       }, { status: 400 })
     }
 
-    // 检查SKU是否已存在（排除当前商品）
-    const checkSql = "SELECT id FROM products WHERE sku = ? AND id != ?"
-    const existingProducts = await query<{ id: number }[]>(checkSql, [sku, id])
+    // 检查编码是否已存在（排除当前商品）
+    const checkSql = "SELECT id FROM products WHERE code = ? AND id != ?"
+    const existingProducts = await query<{ id: number }[]>(checkSql, [code, id])
 
     if (existingProducts.length > 0) {
       return NextResponse.json({ 
         success: false, 
-        error: "SKU编码已存在" 
+        error: "编码已存在" 
       }, { status: 400 })
     }
 
@@ -62,7 +69,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const updateSql = `
       UPDATE products SET
         name = ?,
-        sku = ?,
+        code = ?,
         category = ?,
         description = ?,
         unit = ?,
@@ -72,7 +79,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         dimensions = ?,
         color = ?,
         material = ?,
-        detailed_description = ?,
         specifications = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
@@ -80,7 +86,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     await query(updateSql, [
       name,
-      sku,
+      code,
       category || null,
       description || null,
       unit,
@@ -90,7 +96,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       dimensions || null,
       color || null,
       material || null,
-      detailed_description || null,
       specifications ? JSON.stringify(specifications) : null,
       id
     ])
@@ -101,7 +106,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         p.*,
         COALESCE(s.quantity, 0) as stock_quantity,
         COALESCE(s.min_stock_alert, 10) as min_stock_alert,
-        s.last_inbound_date
+        s.last_inbound_date,
+        (
+          SELECT unit_price 
+          FROM inventory_inbound 
+          WHERE product_id = p.id 
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as price
       FROM products p
       LEFT JOIN inventory_stock s ON p.id = s.product_id
       WHERE p.id = ?

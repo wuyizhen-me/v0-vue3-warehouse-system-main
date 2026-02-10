@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator"
 
 interface QuotationProduct {
   name: string
-  sku?: string
+  code?: string
   category?: string
   unit?: string
   price?: number
@@ -28,7 +28,7 @@ interface ImportResult {
 
 interface SaveResult {
   results: Array<{
-    sku?: string
+    code?: string
     name: string
     success: boolean
     error?: string
@@ -284,7 +284,7 @@ export default function QuotationImportPage() {
                       .map((r, index) => (
                         <div key={index} className="text-sm">
                           <span className="font-medium">{r.name}</span>
-                          {r.sku && <span className="ml-2 text-muted-foreground">SKU: {r.sku}</span>}
+                          {r.code && <span className="ml-2 text-muted-foreground">编码: {r.code}</span>}
                           {r.error && <span className="ml-2 text-red-600">({r.error})</span>}
                         </div>
                       ))
@@ -312,8 +312,8 @@ export default function QuotationImportPage() {
                       <div key={index} className="flex justify-between items-center p-3 border rounded-lg">
                         <div className="flex-1">
                           <div className="font-medium">{product.name}</div>
-                          {product.sku && (
-                            <div className="text-sm text-muted-foreground">SKU: {product.sku}</div>
+                          {product.code && (
+                            <div className="text-sm text-muted-foreground">编码: {product.code}</div>
                           )}
                           {product.category && (
                             <div className="text-sm text-muted-foreground">分类: {product.category}</div>

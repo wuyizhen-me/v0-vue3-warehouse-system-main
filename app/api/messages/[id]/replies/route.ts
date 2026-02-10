@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { query } from "@/lib/db"
 
 // GET - 获取某条留言的所有回复
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const messageId = params.id
+    const { id: messageId } = await params
 
     const replies = await query<any[]>(
       `SELECT * FROM messages 

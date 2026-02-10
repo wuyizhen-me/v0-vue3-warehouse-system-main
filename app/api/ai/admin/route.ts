@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { query } from "@/lib/db"
+import { ConversationManager } from "@/lib/ai/conversation-manager"
+import { createAIClient } from "@/lib/ai/client"
 
 // POST - AI商家助手处理请求
 export async function POST(request: Request) {
@@ -10,25 +12,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "用户名和内容不能为空" }, { status: 400 })
     }
 
-    // 生成商家助手提示词（包含商品列表和未读消息列表）
-    const systemPrompt = await generateAdminPrompt()
+    // 获取用户的对话ID
+    const conversationId = await ConversationManager.getConversationId(username, 'admin')
+
+    // 生成商家助手提示词（包含商品列表、未读消息列表和用户历史记录）
+    const systemPrompt = await generateAdminPrompt(username)
     
     // 调用AI服务
-    const responseContent = await callAIService(
+    const { responseContent, newConversationId } = await callAIService(
       systemPrompt, 
       content, 
       conversation,
+      conversationId,
       config || {
-        apiKey: process.env.OPENAI_API_KEY || "",
-        baseUrl: "https://api.openai.com",
-        model: "gpt-3.5-turbo"
+        apiKey: process.env.AI_API_KEY || process.env.OPENAI_API_KEY || "",
+        baseUrl: process.env.AI_BASE_URL || "https://api.openai.com",
+        model: process.env.AI_MODEL || "gpt-3.5-turbo"
       }
     )
 
+    // 保存新的对话ID
+    if (newConversationId) {
+      await ConversationManager.saveConversationId(username, 'admin', newConversationId)
+    }
+
     // 检查是否包含系统操作指令，如果没有，尝试解析AI响应
-    if (!responseContent.includes("【创建商品:") && !responseContent.includes("【编辑商品:")) {
+    if (!responseContent.includes("【创建商品:") && !responseContent.includes("【编辑商品:") && !responseContent.includes("【回复客户:")) {
       // 解析AI响应，提取可能的系统操作
-      const parsedResponse = parseAIResponse(responseContent, content)
+      const parsedResponse = await parseAIResponse(responseContent, content)
       return NextResponse.json({
         success: true,
         data: parsedResponse
@@ -50,52 +61,44 @@ async function callAIService(
   systemPrompt: string, 
   userContent: string, 
   conversation: any[],
+  conversationId: string | null,
   config: { apiKey: string; baseUrl: string; model: string }
-): Promise<string> {
+): Promise<{ responseContent: string; newConversationId: string | null }> {
   try {
-    const apiKey = config.apiKey || process.env.OPENAI_API_KEY || ""
-    const baseUrl = config.baseUrl || "https://api.openai.com"
-    const model = config.model || "gpt-3.5-turbo"
+    const apiKey = config.apiKey || process.env.AI_API_KEY || process.env.OPENAI_API_KEY || ""
     
     if (!apiKey) {
-      console.error("OPENAI_API_KEY is not set")
+      console.error("AI_API_KEY is not set")
       // 如果API密钥未设置，返回默认响应
-      return generateDefaultResponse(userContent)
+      const defaultResponse = await generateDefaultResponse(userContent)
+      return { responseContent: defaultResponse, newConversationId: null }
     }
     
-    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...conversation.map((msg: any) => ({
-            role: msg.sender === "user" ? "user" : "assistant",
-            content: msg.content
-          })),
-          { role: "user", content: userContent }
-        ],
-        max_tokens: 500,
-        temperature: 0.7
-      })
-    })
+    // 使用AI客户端
+    const aiClient = createAIClient(config)
     
-    if (!response.ok) {
-      const errorData = await response.json()
-      console.error("AI API Error:", errorData)
-      return "抱歉，AI服务暂时不可用，请稍后重试。"
+    // 构建对话历史
+    const conversationHistory = conversation.map((msg: any) => ({
+      role: msg.sender === "user" ? "user" as const : "assistant" as const,
+      content: msg.content
+    }))
+    
+    const result = await aiClient.simpleChat(
+      systemPrompt,
+      userContent,
+      conversationId || undefined,
+      conversationHistory
+    )
+    
+    return {
+      responseContent: result.content,
+      newConversationId: result.conversationId
     }
-    
-    const data = await response.json()
-    return data.choices[0].message.content || ""
   } catch (error) {
     console.error("Error calling AI service:", error)
     // 如果API调用失败，返回默认响应
-    return generateDefaultResponse(userContent)
+    const defaultResponse = await generateDefaultResponse(userContent)
+    return { responseContent: defaultResponse, newConversationId: null }
   }
 }
 
@@ -144,7 +147,7 @@ async function generateDefaultResponse(userContent: string): Promise<string> {
 }
 
 // 解析AI响应，提取可能的系统操作
-function parseAIResponse(aiResponse: string, userContent: string): string {
+async function parseAIResponse(aiResponse: string, userContent: string): Promise<string> {
   // 检查是否包含创建商品的意图
   if ((userContent.includes("创建商品") || userContent.includes("添加商品")) && !aiResponse.includes("【创建商品:")) {
     return `【创建商品:new】`
@@ -158,57 +161,131 @@ function parseAIResponse(aiResponse: string, userContent: string): string {
     }
   }
   
+  // 检查是否包含回复客户的意图
+  if ((userContent.includes("回复") || userContent.includes("发送")) && 
+      (userContent.includes("客户") || userContent.includes("消息")) && 
+      !aiResponse.includes("【回复客户:")) {
+    // 尝试从用户内容中提取客户名和回复内容
+    const customerMatch = userContent.match(/客户[：:]\s*(\w+)/)
+    const messageIdMatch = userContent.match(/消息ID[：:]\s*(\d+)/)
+    
+    if (customerMatch || messageIdMatch) {
+      let customerUsername = customerMatch?.[1]
+      
+      // 如果有消息ID，从数据库获取客户用户名
+      if (messageIdMatch && !customerUsername) {
+        const messages = await query<any[]>(
+          `SELECT cr.customer_username 
+           FROM chat_messages cm
+           JOIN chat_rooms cr ON cm.room_id = cr.id
+           WHERE cm.id = ?`,
+          [messageIdMatch[1]]
+        )
+        if (messages.length > 0) {
+          customerUsername = messages[0].customer_username
+        }
+      }
+      
+      if (customerUsername) {
+        // 提取回复内容
+        const replyContent = userContent
+          .replace(/回复|发送|客户[：:]\s*\w+|消息ID[：:]\s*\d+/g, '')
+          .trim()
+        
+        if (replyContent) {
+          return `【回复客户:${customerUsername}|类型:text|内容:${replyContent}】`
+        }
+      }
+    }
+  }
+  
   // 默认返回AI原始响应
   return aiResponse
 }
 
 // 生成商家助手提示词
-async function generateAdminPrompt() {
+async function generateAdminPrompt(username: string) {
   // 获取商品列表
   const products = await query<any[]>(
-    `SELECT id, name, sku, stock_quantity, min_stock_alert, price 
-     FROM products 
-     ORDER BY updated_at DESC 
-     LIMIT 20`
+    `SELECT p.id, p.name, p.code, COALESCE(s.quantity, 0) as stock_quantity, 
+            p.min_stock_alert, p.unit, p.description
+     FROM products p
+     LEFT JOIN inventory_stock s ON p.id = s.product_id
+     WHERE p.status = 'active'
+     ORDER BY p.updated_at DESC 
+     LIMIT 30`
   )
   
-  // 获取未读消息列表
+  // 获取未读消息列表（来自客户的消息）
   const unreadMessages = await query<any[]>(
-    `SELECT cm.id, cm.content, cm.created_at, u.username, u.nickname
+    `SELECT cm.id, cm.content, cm.created_at, cm.sender_username, cr.customer_username
      FROM chat_messages cm
-     LEFT JOIN users u ON cm.sender_id = u.id
-     WHERE cm.is_read = FALSE
+     JOIN chat_rooms cr ON cm.room_id = cr.id
+     WHERE cm.is_read = FALSE AND cm.sender_role = 'customer'
      ORDER BY cm.created_at DESC
      LIMIT 10`
   )
   
+  // 获取用户历史行为（最近的操作记录）
+  const userHistory = await query<any[]>(
+    `SELECT action, action_time 
+     FROM user_history 
+     WHERE username = ? 
+     ORDER BY action_time DESC 
+     LIMIT 10`,
+    [username]
+  )
+  
   // 格式化商品列表
   const productList = products.map(p => 
-    `- ID:${p.id} | ${p.name} (SKU:${p.sku}) | 库存:${p.stock_quantity} | 安全库存:${p.min_stock_alert} | 价格:¥${p.price}`
+    `- ID:${p.id} | ${p.name} (编码:${p.code}) | 库存:${p.stock_quantity}${p.unit || '件'} | 安全库存:${p.min_stock_alert}${p.unit || '件'}${p.stock_quantity <= p.min_stock_alert ? ' ⚠️库存不足' : ''}`
   ).join('\n')
   
   // 格式化未读消息列表
-  const messageList = unreadMessages.map(m => 
-    `- [${m.created_at}] ${m.nickname || m.username}: ${m.content?.substring(0, 50)}${m.content?.length > 50 ? '...' : ''}`
-  ).join('\n')
+  const messageList = unreadMessages.map(m => {
+    const time = new Date(m.created_at).toLocaleString('zh-CN')
+    return `- [消息ID:${m.id}] [${time}] 客户${m.customer_username}: ${m.content?.substring(0, 100)}${m.content?.length > 100 ? '...' : ''}`
+  }).join('\n')
   
-  const systemPrompt = `你是一个智能商家助手，负责帮助商家管理商品和处理消息。
+  // 格式化用户历史
+  const historyList = userHistory.map(h => {
+    const time = new Date(h.action_time).toLocaleString('zh-CN')
+    return `- [${time}] ${h.action}`
+  }).join('\n')
+  
+  const systemPrompt = `你是一个智能商家助手，负责帮助商家管理商品、处理客户消息和生成报价。
 
-当前商品列表（最近20个）：
+当前商品列表（最近30个）：
 ${productList || '暂无商品'}
 
-未读消息列表（最近10条）：
+未读客户消息列表（最近10条）：
 ${messageList || '暂无未读消息'}
 
-系统操作说明：
-1. 创建商品：当用户需要创建商品时，使用格式【创建商品:{商品ID}】
-2. 编辑商品：当用户需要编辑商品时，使用格式【编辑商品:{商品ID}】
-3. 未读消息：当用户需要查看未读消息时，直接返回未读消息数量
+用户最近操作记录：
+${historyList || '暂无历史记录'}
 
-请根据以上商品列表和未读消息列表，为用户提供准确的回复：
+系统操作说明：
+1. 创建商品：当用户需要创建商品时，使用格式【创建商品:new】
+2. 编辑商品：当用户需要编辑商品时，使用格式【编辑商品:{商品ID}】
+3. 回复客户：当用户需要回复客户消息时，使用以下格式：
+   【回复客户:{客户用户名}|类型:{text/product/quotation}|内容:{回复内容或商品ID或报价单号}】
+   
+   回复类型说明：
+   - text: 文本回复，内容为文本消息
+   - product: 发送商品，内容为商品ID，可以用逗号分隔多个商品ID
+   - quotation: 发送报价表，内容为报价单号
+
+回复客户示例：
+- 文本回复：【回复客户:customer123|类型:text|内容:您好，我们的产品质量很好】
+- 发送商品：【回复客户:customer123|类型:product|内容:1,2,3】（发送商品ID为1,2,3的商品）
+- 发送报价表：【回复客户:customer123|类型:quotation|内容:QT2024001】
+
+请根据以上信息，为用户提供准确的回复：
 - 当用户询问商品信息时，参考商品列表提供准确数据
 - 当用户询问消息时，参考未读消息列表提供详细信息
 - 当库存低于安全库存时，主动提醒用户补货
+- 当用户需要回复客户时，使用【回复客户】格式
+- 根据用户以往记录（操作历史）提供个性化建议
 - 提供友好的中文回复，并在需要时使用系统操作格式。`
     
   return systemPrompt

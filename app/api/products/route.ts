@@ -12,7 +12,14 @@ export async function GET(request: Request) {
       SELECT 
         p.*,
         COALESCE(s.quantity, 0) as stock_quantity,
-        COALESCE(s.min_stock_alert, 10) as min_stock_alert
+        COALESCE(s.min_stock_alert, 10) as min_stock_alert,
+        (
+          SELECT unit_price 
+          FROM inventory_inbound 
+          WHERE product_id = p.id 
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as price
       FROM products p
       LEFT JOIN inventory_stock s ON p.id = s.product_id
       WHERE 1=1
@@ -21,7 +28,7 @@ export async function GET(request: Request) {
     const params: any[] = []
 
     if (keyword) {
-      sql += ` AND (p.name LIKE ? OR p.sku LIKE ?)`
+      sql += ` AND (p.name LIKE ? OR p.code LIKE ?)`
       params.push(`%${keyword}%`, `%${keyword}%`)
     }
 
@@ -55,13 +62,12 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { 
       name, 
-      sku, 
+      code, 
       category, 
       description, 
       unit, 
       image_url, 
       image_alt, 
-      detailed_description,
       specifications,
       brand,
       model,
@@ -72,16 +78,16 @@ export async function POST(request: Request) {
     } = body
 
     // 验证必填字段
-    if (!name || !sku) {
-      return NextResponse.json({ success: false, error: "商品名称和SKU为必填项" }, { status: 400 })
+    if (!name || !code) {
+      return NextResponse.json({ success: false, error: "商品名称和编码为必填项" }, { status: 400 })
     }
 
-    // 首先检查SKU是否已存在
-    const checkSql = `SELECT id FROM products WHERE sku = ?`
-    const existingProduct = await query<{ id: number }[]>(checkSql, [sku])
+    // 首先检查编码是否已存在
+    const checkSql = `SELECT id FROM products WHERE code = ?`
+    const existingProduct = await query<{ id: number }[]>(checkSql, [code])
 
     if (existingProduct.length > 0) {
-      // 如果SKU已存在，更新商品信息
+      // 如果编码已存在，更新商品信息
       const updateSql = `
         UPDATE products SET 
           name = ?, 
@@ -90,7 +96,6 @@ export async function POST(request: Request) {
           unit = ?, 
           image_url = ?, 
           image_alt = ?, 
-          detailed_description = ?, 
           specifications = ?, 
           brand = ?, 
           model = ?, 
@@ -99,14 +104,14 @@ export async function POST(request: Request) {
           color = ?, 
           material = ?, 
           updated_at = NOW()
-        WHERE sku = ?
+        WHERE code = ?
       `
       
       await query(updateSql, [
         name, category || null, description || null, unit || "件",
-        image_url || null, image_alt || null, detailed_description || null, specifications || null,
+        image_url || null, image_alt || null, specifications || null,
         brand || null, model || null, weight || null, dimensions || null, color || null, material || null,
-        sku
+        code
       ])
       
       return NextResponse.json({
@@ -118,16 +123,16 @@ export async function POST(request: Request) {
     // 创建新商品
     const insertSql = `
       INSERT INTO products (
-        name, sku, category, description, unit, 
-        image_url, image_alt, detailed_description, specifications,
+        name, code, category, description, unit, 
+        image_url, image_alt, specifications,
         brand, model, weight, dimensions, color, material
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
 
     const result: any = await query(insertSql, [
-      name, sku, category || null, description || null, unit || "件",
-      image_url || null, image_alt || null, detailed_description || null, specifications || null,
+      name, code, category || null, description || null, unit || "件",
+      image_url || null, image_alt || null, specifications || null,
       brand || null, model || null, weight || null, dimensions || null, color || null, material || null
     ])
 
@@ -155,13 +160,12 @@ export async function PUT(request: Request) {
     const { 
       id, 
       name, 
-      sku, 
+      code, 
       category, 
       description, 
       unit, 
       image_url, 
       image_alt, 
-      detailed_description,
       specifications,
       brand,
       model,
@@ -172,21 +176,20 @@ export async function PUT(request: Request) {
     } = body
 
     // 验证必填字段
-    if (!id || !name || !sku) {
-      return NextResponse.json({ success: false, error: "商品ID、名称和SKU为必填项" }, { status: 400 })
+    if (!id || !name || !code) {
+      return NextResponse.json({ success: false, error: "商品ID、名称和编码为必填项" }, { status: 400 })
     }
 
     // 更新商品信息
     const updateSql = `
       UPDATE products SET 
         name = ?, 
-        sku = ?, 
+        code = ?, 
         category = ?, 
         description = ?, 
         unit = ?, 
         image_url = ?, 
         image_alt = ?, 
-        detailed_description = ?, 
         specifications = ?, 
         brand = ?, 
         model = ?, 
@@ -199,8 +202,8 @@ export async function PUT(request: Request) {
     `
     
     await query(updateSql, [
-      name, sku, category || null, description || null, unit || "件",
-      image_url || null, image_alt || null, detailed_description || null, specifications || null,
+      name, code, category || null, description || null, unit || "件",
+      image_url || null, image_alt || null, specifications || null,
       brand || null, model || null, weight || null, dimensions || null, color || null, material || null,
       id
     ])

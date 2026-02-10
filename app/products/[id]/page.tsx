@@ -15,7 +15,7 @@ import { getUserSession, isAdmin, type User } from "@/lib/auth"
 interface Product {
   id: number
   name: string
-  sku: string
+  code: string
   category: string
   description: string
   unit: string
@@ -24,7 +24,6 @@ interface Product {
   last_inbound_date: string
   image_url?: string
   image_alt?: string
-  detailed_description?: string
   specifications?: any
   brand?: string
   model?: string
@@ -127,8 +126,8 @@ export default function ProductDetailPage() {
   }
 
   const handleSave = async () => {
-    if (!formData.name || !formData.sku) {
-      setError("商品名称和SKU为必填项")
+    if (!formData.name || !formData.code) {
+      setError("商品名称和编码为必填项")
       return
     }
 
@@ -216,7 +215,7 @@ export default function ProductDetailPage() {
             </Button>
             <div className="flex-1">
               <h1 className="text-2xl font-bold">{product.name}</h1>
-              <p className="text-sm text-muted-foreground">SKU: {product.sku}</p>
+              <p className="text-sm text-muted-foreground">编码: {product.code}</p>
             </div>
             <div className="flex gap-2">
               {isEditing ? (
@@ -334,11 +333,11 @@ export default function ProductDetailPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="sku">SKU *</Label>
+                      <Label htmlFor="code">编码 *</Label>
                       <Input
-                        id="sku"
-                        name="sku"
-                        value={formData.sku || ""}
+                        id="code"
+                        name="code"
+                        value={formData.code || ""}
                         onChange={handleInputChange}
                       />
                     </div>
@@ -544,31 +543,7 @@ export default function ProductDetailPage() {
             </CardContent>
           </Card>
           
-          {/* 详细描述 */}
-          <Card>
-            <CardHeader>
-              <CardTitle>详细介绍</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isEditing && isUserAdmin ? (
-                <Textarea
-                  name="detailed_description"
-                  value={formData.detailed_description || ""}
-                  onChange={handleInputChange}
-                  rows={6}
-                  placeholder="请输入详细介绍..."
-                />
-              ) : (
-                product.detailed_description ? (
-                  <div className="prose max-w-none">
-                    <p className="text-base leading-relaxed whitespace-pre-line">{product.detailed_description}</p>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">暂无详细介绍</p>
-                )
-              )}
-            </CardContent>
-          </Card>
+
         </div>
       </main>
 

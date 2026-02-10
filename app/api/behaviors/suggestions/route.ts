@@ -4,7 +4,7 @@ import { query } from "@/lib/db"
 interface Product {
   id: number
   name: string
-  sku: string
+  code: string
   price: number
   category: string
 }

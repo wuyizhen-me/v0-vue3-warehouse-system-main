@@ -10,7 +10,7 @@ import { ArrowLeft, Search, Eye } from "lucide-react"
 interface InboundRecord {
   id: number
   product_name: string
-  product_sku: string
+  product_code: string
   product_unit: string
   quantity: number
   unit_price: number
@@ -40,7 +40,7 @@ export default function InboundRecordsPage() {
       const filtered = records.filter(
         (record) =>
           record.product_name.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-          record.product_sku.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+          record.product_code.toLowerCase().includes(searchKeyword.toLowerCase()) ||
           record.batch_number.toLowerCase().includes(searchKeyword.toLowerCase()),
       )
       setFilteredRecords(filtered)
@@ -125,7 +125,7 @@ export default function InboundRecordsPage() {
                           <div className="mb-2 flex items-start justify-between">
                             <div>
                               <h3 className="text-lg font-semibold">{record.product_name}</h3>
-                              <p className="text-sm text-muted-foreground">SKU: {record.product_sku}</p>
+                              <p className="text-sm text-muted-foreground">编码: {record.product_code}</p>
                             </div>
                             <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
                               已完成

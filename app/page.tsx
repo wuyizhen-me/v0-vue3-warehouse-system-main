@@ -12,7 +12,13 @@ import {
   ShoppingCart,
   BarChart3,
   DollarSign,
+  LogOut,
+  MessageSquare,
+  History,
+  Users,
+  Settings,
 } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface DashboardStats {
   today: {
@@ -97,6 +103,41 @@ export default function HomePage() {
       color: "bg-orange-500",
       href: "/quotations",
     },
+    {
+      title: "客户聊天",
+      description: "与客户实时沟通",
+      icon: MessageSquare,
+      color: "bg-teal-500",
+      href: "/admin/chat",
+    },
+    {
+      title: "沟通日志",
+      description: "记录客户沟通信息",
+      icon: MessageSquare,
+      color: "bg-cyan-500",
+      href: "/communications",
+    },
+    {
+      title: "用户历史",
+      description: "查看用户操作记录",
+      icon: History,
+      color: "bg-indigo-500",
+      href: "/history",
+    },
+    {
+      title: "客户管理",
+      description: "管理客户信息",
+      icon: Users,
+      color: "bg-pink-500",
+      href: "/customers",
+    },
+    {
+      title: "系统设置",
+      description: "配置系统参数",
+      icon: Settings,
+      color: "bg-gray-500",
+      href: "/settings",
+    },
   ]
 
   if (loading) {
@@ -117,8 +158,19 @@ export default function HomePage() {
               <h1 className="text-2xl font-bold">仓库管理系统</h1>
               <p className="text-sm text-muted-foreground">店家端 - 数据总览</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4 pr-12">
               <span className="text-sm text-muted-foreground">{new Date().toLocaleDateString("zh-CN")}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  await fetch("/api/auth/logout", { method: "POST" })
+                  window.location.href = "/login"
+                }}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                退出登录
+              </Button>
             </div>
           </div>
         </div>

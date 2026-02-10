@@ -14,7 +14,7 @@ import Image from "next/image"
 interface Product {
   id: number
   name: string
-  sku: string
+  code: string
   price: number
   stock_quantity: number
   image_url?: string
@@ -153,7 +153,7 @@ export default function CreateQuotationPage() {
       const quotationData = {
         items: selectedItems.map((item) => ({
           product_name: item.product.name,
-          product_sku: item.product.sku || "",
+          product_code: item.product.code || "",
           product_category: item.product.category || "-",
           product_unit: item.product.unit || "件",
           unit_price: item.product.price || 0,
@@ -270,9 +270,9 @@ export default function CreateQuotationPage() {
                           )}
                           <div className="flex-1">
                             <h3 className="font-semibold">{product.name}</h3>
-                            <p className="text-sm text-muted-foreground">{product.sku || "-"}</p>
+                            <p className="text-sm text-muted-foreground">{product.code || "-"}</p>
                             <p className="mt-1 text-lg font-bold text-green-600">
-                              ¥{product.price ? product.price.toFixed(2) : "0.00"}
+                              ¥{product.price ? Number(product.price).toFixed(2) : "0.00"}
                             </p>
                             <p className="text-xs text-muted-foreground">库存: {product.stock_quantity || 0}</p>
                           </div>
@@ -313,9 +313,9 @@ export default function CreateQuotationPage() {
                       <div key={item.product.id} className="rounded-lg border p-3">
                         <div className="mb-2 flex items-start justify-between">
                           <div className="flex-1">
-                            <h4 className="font-medium">{item.product.name}</h4>
-                            <p className="text-sm text-muted-foreground">{item.product.sku}</p>
-                          </div>
+                        <h4 className="font-medium">{item.product.name}</h4>
+                        <p className="text-sm text-muted-foreground">{item.product.code}</p>
+                      </div>
                           <Button
                             variant="ghost"
                             size="sm"

@@ -10,7 +10,7 @@ import { ArrowLeft, Search, Eye, AlertCircle } from "lucide-react"
 interface Product {
   id: number
   name: string
-  sku: string
+  code: string
   category: string
   unit: string
   stock_quantity: number
@@ -37,7 +37,7 @@ export default function CustomerProductsPage() {
       const filtered = products.filter(
         (product) =>
           product.name.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-          product.sku.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+          product.code.toLowerCase().includes(searchKeyword.toLowerCase()) ||
           product.category?.toLowerCase().includes(searchKeyword.toLowerCase()),
       )
       setFilteredProducts(filtered)
@@ -110,13 +110,13 @@ export default function CustomerProductsPage() {
                   <Card
                     key={product.id}
                     className="cursor-pointer transition-all hover:shadow-md"
-                    onClick={() => router.push(`/products/${product.id}`)}
+                    onClick={() => router.push(`/customer/products/${product.id}`)}
                   >
                     <CardContent className="p-6">
                       <div className="mb-3 flex items-start justify-between">
                         <div>
                           <h3 className="mb-1 font-semibold">{product.name}</h3>
-                          <p className="text-xs text-muted-foreground">SKU: {product.sku}</p>
+                          <p className="text-xs text-muted-foreground">编码: {product.code}</p>
                         </div>
                         {product.stock_quantity <= product.min_stock_alert && (
                           <AlertCircle className="h-5 w-5 text-red-500" />
@@ -138,7 +138,7 @@ export default function CustomerProductsPage() {
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-muted-foreground">价格</span>
-                          <span className="font-medium text-green-600">¥{product.price?.toFixed(2) || "0.00"}</span>
+                          <span className="font-medium text-green-600">¥{product.price ? Number(product.price).toFixed(2) : "0.00"}</span>
                         </div>
                       </div>
 

@@ -22,13 +22,12 @@ export async function query<T>(sql: string, params?: any[]): Promise<T> {
 export interface Product {
   id: number
   name: string
-  sku: string
+  code: string
   category: string
   description?: string
   unit: string
   image_url?: string
   image_alt?: string
-  detailed_description?: string
   specifications?: any
   brand?: string
   model?: string
@@ -85,6 +84,6 @@ export interface ProductWithStock extends Product {
 
 export interface InboundWithProduct extends InventoryInbound {
   product_name: string
-  product_sku: string
+  product_code: string
   product_unit: string
 }

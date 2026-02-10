@@ -14,7 +14,7 @@ const AICustomerChat = React.lazy(() => import("@/components/ai-customer-chat"))
 interface Product {
   id: number
   name: string
-  sku: string
+  code: string
   price: number
   stock_quantity: number
   size?: string
@@ -287,7 +287,7 @@ export default function CustomerPage() {
                   >
                     <h4 className="mb-1 font-semibold">{product.name}</h4>
                     <p className="mb-2 text-sm text-muted-foreground">{product.recommendation_reason}</p>
-                    <p className="text-lg font-bold text-green-600">¥{product.price?.toFixed(2) || "0.00"}</p>
+                    <p className="text-lg font-bold text-green-600">¥{product.price ? Number(product.price).toFixed(2) : "0.00"}</p>
                   </div>
                 ))}
               </div>

@@ -13,7 +13,7 @@ export async function GET(request: Request) {
       SELECT 
         i.*,
         p.name as product_name,
-        p.sku as product_sku,
+        p.code as product_code,
         p.unit as product_unit
       FROM inventory_inbound i
       JOIN products p ON i.product_id = p.id

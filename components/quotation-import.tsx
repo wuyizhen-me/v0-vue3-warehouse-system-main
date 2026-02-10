@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface QuotationProduct {
   name: string
-  sku?: string
+  code?: string
   category?: string
   unit?: string
   price?: number
@@ -245,7 +245,7 @@ export function QuotationImport({ onImportComplete, className = "" }: QuotationI
                 <div key={index} className="flex justify-between items-center py-1 border-b last:border-b-0">
                   <span className="text-sm font-medium">{product.name}</span>
                   <span className="text-sm text-muted-foreground">
-                    {product.sku && `SKU: ${product.sku}`}
+                    {product.code && `编码: ${product.code}`}
                     {product.price && ` ¥${product.price}`}
                   </span>
                 </div>

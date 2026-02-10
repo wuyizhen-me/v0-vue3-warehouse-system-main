@@ -63,9 +63,9 @@
               :class="{ selected: selectedIds.includes(record.id) }"
             >
               <td>
-                <input 
-                  type="checkbox" 
-                  :value="record.id" 
+                <input
+                  type="checkbox"
+                  :value="record.id"
                   v-model="selectedIds"
                 />
               </td>
@@ -73,8 +73,10 @@
               <td>
                 <div class="product-cell">
                   <span class="product-name">{{ record.productName }}</span>
-                  <span class="product-sku">{{ record.sku }}</span>
                 </div>
+              </td>
+              <td>
+                <span class="product-code">{{ record.code }}</span>
               </td>
               <td class="quantity">{{ record.quantity }} {{ record.unit }}</td>
               <td>{{ record.supplier }}</td>
@@ -511,7 +513,7 @@ watch([searchKeyword, currentStatus, pageSize], () => {
 
 .product-cell { display: flex; flex-direction: column; }
 .product-name { font-weight: 500; color: #1e293b; }
-.product-sku { font-size: 0.75rem; color: #94a3b8; font-family: monospace; }
+.product-code { font-size: 0.75rem; color: #94a3b8; font-family: monospace; }
 
 .quantity { font-weight: 600; color: #1e293b; }
 .time { color: #64748b; font-size: 0.875rem; }

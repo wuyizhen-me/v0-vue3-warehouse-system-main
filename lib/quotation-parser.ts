@@ -1,6 +1,6 @@
 export interface QuotationProduct {
   name: string
-  sku?: string
+  code?: string
   category?: string
   unit?: string
   price?: number
@@ -97,7 +97,7 @@ export class QuotationParser {
           // 格式1解析
           product = {
             name: String(cells[0] || "").trim(),
-            sku: String(cells[1] || "").trim(),
+            code: String(cells[1] || "").trim(),
             category: String(cells[2] || "").trim(),
             unit: String(cells[3] || "").trim() || "件",
             price: this.parseNumber(cells[4]),
@@ -114,7 +114,7 @@ export class QuotationParser {
           // 格式2解析
           product = {
             name: String(cells[0] || "").trim(),
-            sku: String(cells[1] || "").trim(),
+            code: String(cells[1] || "").trim(),
             material: String(cells[2] || "").trim(),
             color: String(cells[3] || "").trim(),
             dimensions: String(cells[4] || "").trim(),
@@ -234,7 +234,7 @@ export class QuotationParser {
     // 设置列
     worksheet.columns = [
       { header: "商品名称", key: "name", width: 25 },
-      { header: "SKU", key: "sku", width: 15 },
+      { header: "商品编码", key: "code", width: 15 },
       { header: "材质", key: "material", width: 12 },
       { header: "颜色", key: "color", width: 12 },
       { header: "尺寸", key: "dimensions", width: 15 },
@@ -248,7 +248,7 @@ export class QuotationParser {
     // 添加示例数据
     worksheet.addRow({
       name: "示例商品1",
-      sku: "SKU001",
+      code: "CODE001",
       material: "塑料",
       color: "黑色",
       dimensions: "100x100x50mm",
@@ -261,7 +261,7 @@ export class QuotationParser {
 
     worksheet.addRow({
       name: "示例商品2",
-      sku: "SKU002",
+      code: "CODE002",
       material: "纸质",
       color: "白色",
       dimensions: "200x300mm",
